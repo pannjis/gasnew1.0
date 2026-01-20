@@ -31,6 +31,7 @@ function setupDatabase() {
     {name: 'RIWAYAT_BAYAR_KASBON', header: ['ID_Bayar', 'ID_Kasbon', 'Tanggal_Bayar', 'Nominal_Bayar', 'Tipe_Bayar', 'Keterangan']},
     {name: 'PENGATURAN', header: ['Key', 'Value']},
     {name: 'AKUN_KAS', header: ['ID_Akun', 'Nama_Akun', 'No_Rekening', 'Tipe', 'Saldo_Awal']},
+    {name: 'RIWAYAT_SO', header: ['ID_SO', 'TANGGAL', 'PETUGAS', 'TOTAL_ITEM', 'DATA_JSON']},
     {name: 'LOG_AKTIVITAS', header: ['TIMESTAMP', 'USER / EMAIL', 'JENIS AKSI', 'DETAIL AKTIVITAS']} 
   ];
 
@@ -1890,6 +1891,93 @@ function getLogAktivitas() {
       detail: row[3]
     };
   });
+}
+
+// ==========================================
+// FITUR STOK OPNAME (BULK & HISTORY)
+// ==========================================
+
+// 1. Simpan Stok Opname Sekaligus (Bulk)
+function simpanStokOpnameBulk(dataDraft) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetProduk = ss.getSheetByName('PRODUK');
+  const sheetRiwayat = ss.getSheetByName('RIWAYAT_SO');
+  
+  // Ambil data produk terbaru untuk validasi
+  const dataProduk = sheetProduk.getDataRange().getValues();
+  const user = Session.getActiveUser().getEmail() || 'Admin';
+  const idSO = 'SO-' + Date.now(); // ID Unik
+  const tanggal = new Date();
+  
+  let detailHistory = [];
+
+  // Loop setiap item di draft yang dikirim dari HTML
+  dataDraft.forEach(item => {
+    // Cari baris produk di database berdasarkan ID (Kolom 0)
+    for (let i = 1; i < dataProduk.length; i++) {
+      if (String(dataProduk[i][0]) === String(item.id)) {
+        
+        let stokIsiLama = dataProduk[i][4];
+        let stokKosongLama = dataProduk[i][5];
+
+        // Update Stok di Sheet PRODUK
+        // Kolom 5 (Index 4) = Stok Isi
+        // Kolom 6 (Index 5) = Stok Kosong
+        sheetProduk.getRange(i + 1, 5).setValue(Number(item.fisikIsi));
+        sheetProduk.getRange(i + 1, 6).setValue(Number(item.fisikKosong));
+
+        // Simpan detail perubahan untuk riwayat
+        detailHistory.push({
+          nama: dataProduk[i][1],
+          isi_lama: stokIsiLama,
+          isi_baru: item.fisikIsi,
+          kosong_lama: stokKosongLama,
+          kosong_baru: item.fisikKosong,
+          keterangan: item.keterangan
+        });
+        break;
+      }
+    }
+  });
+
+  // 2. Simpan ke Sheet RIWAYAT_SO
+  if(sheetRiwayat) {
+    sheetRiwayat.appendRow([
+      idSO,
+      tanggal,
+      user,
+      dataDraft.length,
+      JSON.stringify(detailHistory) // Simpan detail sebagai teks JSON agar bisa diload ulang
+    ]);
+  }
+
+  // 3. Catat Log Global
+  catatLog("STOK_OPNAME", `Bulk Update ${dataDraft.length} item. ID: ${idSO}`);
+
+  return "Data Stok Opname Berhasil Disimpan!";
+}
+
+// 2. Ambil Daftar Riwayat SO
+function getRiwayatSO() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('RIWAYAT_SO');
+  if(!sheet) return [];
+  
+  const data = sheet.getDataRange().getValues();
+  if(data.length <= 1) return [];
+  
+  // Hapus header, lalu balik urutan agar yang terbaru ada di atas
+  // Kita format tanggalnya sekalian di sini biar rapi
+  const timeZone = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  
+  let result = data.slice(1).map(r => {
+     let tgl = r[1];
+     if (tgl instanceof Date) {
+        tgl = Utilities.formatDate(tgl, timeZone, "dd/MM/yyyy HH:mm");
+     }
+     return [r[0], tgl, r[2], r[3], r[4]];
+  });
+
+  return result.reverse();
 }
 
 function generatePdfFromHtml(htmlContent, filename, logoId) { 
