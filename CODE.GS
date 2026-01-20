@@ -1948,6 +1948,10 @@ function simpanStokOpnameBulk(dataDraft) {
 
   catatLog("STOK_OPNAME", `Bulk Update ${dataDraft.length} item. ID: ${idSO}`);
 
+  // --- TAMBAHKAN BARIS INI ---
+  SpreadsheetApp.flush(); // Memaksa data tertulis segera agar bisa langsung dibaca
+  // ---------------------------
+
   // [KUNCI UTAMA] Return Object JSON berisi ID
   return JSON.stringify({
       status: 'success',
