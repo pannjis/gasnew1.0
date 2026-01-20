@@ -558,18 +558,61 @@
       font-family: 'Consolas', 'Monaco', monospace; /* Font angka biar sejajar */
       font-weight: 500;
   }
+/* SETTING KHUSUS CETAK/PDF */
+@media print {
+    /* 1. Sembunyikan SEMUA elemen di body */
+    body * {
+        visibility: hidden;
+    }
 
-  /* Card Review Opname */
-#page-review-opname .card {
-    transition: transform 0.2s;
-}
-#page-review-opname .card:hover {
-    transform: translateY(-3px);
-}
-#page-review-opname .table thead th {
-    font-size: 13px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-}
+    /* 2. Hanya Tampilkan Halaman Detail Opname & isinya */
+    #page-detail-history-so, #page-detail-history-so * {
+        visibility: visible;
+    }
 
+    /* 3. Posisikan Halaman Detail di Pojok Kiri Atas Kertas */
+    #page-detail-history-so {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: white !important; /* Pastikan background putih */
+    }
+
+    /* 4. Sembunyikan Tombol-tombol Aksi (Kembali, Excel, PDF) saat dicetak */
+    .btn, button, .no-print {
+        display: none !important;
+    }
+
+    /* 5. Paksa Cetak Background Warna (Untuk Card Statistik) */
+    .card {
+        border: 1px solid #000 !important; /* Tambah border biar tegas */
+        break-inside: avoid; /* Jangan potong card di tengah halaman */
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    /* 6. Rapikan Tabel */
+    table {
+        width: 100% !important;
+        border-collapse: collapse !important;
+    }
+    th, td {
+        border: 1px solid #000 !important;
+        padding: 5px !important;
+        font-size: 11px !important; /* Kecilkan font sedikit biar muat */
+        color: #000 !important; /* Hitamkan teks */
+    }
+    
+    /* Hilangkan Badge Background di print, ganti jadi teks tebal saja agar hemat tinta & jelas */
+    .badge {
+        background: none !important;
+        color: #000 !important;
+        border: none !important;
+        font-weight: bold !important;
+        padding: 0 !important;
+    }
+}
 </style>
