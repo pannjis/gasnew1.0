@@ -7085,36 +7085,138 @@ function reviewDraft() {
 
 // 6. Eksekusi Simpan ke Database
 // 6. Eksekusi Simpan ke Database (UPDATE REALTIME)
+// [UPDATE DI JAVASCRIPT.HTML]
 function prosesSimpanSO() {
-  const payload = Object.values(draftBuffer); 
-  
-  // --- PERBAIKAN DISINI ---
-  const modalEl = document.getElementById('modalReviewOpname');
-  const modalInstance = bootstrap.Modal.getInstance(modalEl);
-  
-  if (modalInstance) {
-      modalInstance.hide(); // Tutup jika instance ditemukan
-  } else {
-      // Jika null (misal error), kita paksa init baru lalu tutup agar backdrop hilang
-      new bootstrap.Modal(modalEl).hide();
-  }
+    // 1. Validasi
+    if (Object.keys(draftBuffer).length === 0) {
+        return myAlert('Peringatan', 'Belum ada produk yang diinput!', 'warning');
+    }
 
-  loading(true);
-  google.script.run.withSuccessHandler(res => {
-    loading(false);
-    myAlert('Sukses', res, 'success');
+    // 2. Konfirmasi
+    Swal.fire({
+        title: 'Simpan Data Opname?',
+        text: "Stok produk akan diperbarui sesuai input fisik!",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Ya, Simpan!',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            
+            // Tutup Modal Review (jika terbuka)
+            const modalEl = document.getElementById('modalReviewOpname');
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if (modalInstance) modalInstance.hide(); // Tutup aman
+            
+            loading(true); // Nyalakan loading
+            const payload = Object.values(draftBuffer);
+
+            // 3. Kirim ke Backend
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    loading(false); // Matikan loading
+                    
+                    // Parse respon JSON dari CODE.GS
+                    let res;
+                    try { res = JSON.parse(response); } catch(e) { res = { status: 'error', message: response }; }
+
+                    if (res.status === 'success') {
+                        // A. Notifikasi Sukses
+                        myAlert('Sukses', res.message, 'success');
+
+                        // B. Reset Halaman Input (Bersihkan Draft)
+                        draftBuffer = {};
+                        renderTabelDraftOpname(); // Tabel jadi kosong
+                        document.getElementById('badge-draft').classList.add('d-none');
+                        
+                        // C. Refresh Data Produk Global (Silent)
+                        loadProduk();
+
+                        // D. [LOGIKA BARU] Pindah Tab & Buka Detail
+                        if (res.id) {
+                            switchTabOpname('riwayat'); // Pindah ke tab Riwayat
+                            lihatDetailSO(res.id);      // Buka detail ID tersebut
+                        }
+
+                    } else {
+                        myAlert('Gagal', res.message, 'error');
+                    }
+                })
+                .withFailureHandler(function(err) {
+                    loading(false);
+                    myAlert('Error', err.message, 'error');
+                })
+                .simpanStokOpnameBulk(payload);
+        }
+    });
+}
+
+// [TAMBAH/PASTIKAN ADA DI JAVASCRIPT.HTML]
+
+// 1. Request Data Detail ke Server
+function lihatDetailSO(idOpname) {
+    loading(true);
+    google.script.run
+        .withSuccessHandler(function(jsonString) {
+            loading(false);
+            try {
+                const dataItems = JSON.parse(jsonString);
+                tampilkanHalamanDetailSO(idOpname, dataItems);
+            } catch (e) {
+                myAlert('Error', 'Gagal memproses data detail.', 'error');
+            }
+        })
+        .withFailureHandler(function(err){
+            loading(false);
+            myAlert('Error', err.message, 'error');
+        })
+        .getDetailOpname(idOpname); // Panggil fungsi baru di CODE.GS tadi
+}
+
+// 2. Render Tampilan Detail
+function tampilkanHalamanDetailSO(id, dataItems) {
+    // Tampilkan Halaman Detail, Sembunyikan List Riwayat
+    document.getElementById('tab-riwayat-opname').classList.add('d-none');
+    document.getElementById('page-detail-history-so').classList.remove('d-none');
     
-    // Reset
-    draftBuffer = {}; 
-    renderTabelDraftOpname(); // Ini akan otomatis memunculkan pesan "Belum ada produk"
+    // Set Header
+    document.getElementById('info-id-so').innerText = 'ID Transaksi: ' + id;
     
-    // Refresh data global
-    loadProduk();
+    // Render Tabel
+    const tbody = document.getElementById('tbody-detail-history-so');
+    tbody.innerHTML = '';
     
-  }).withFailureHandler(err => {
-    loading(false);
-    myAlert('Gagal', err.message, 'error');
-  }).simpanStokOpnameBulk(payload);
+    let totalPlus = 0, totalMinus = 0;
+
+    dataItems.forEach(item => {
+        // Hitung Selisih
+        let selisihIsi = item.isi_baru - item.isi_lama;
+        
+        // Logika Badge Warna
+        let badge = '';
+        if(selisihIsi === 0) badge = '<span class="badge bg-light text-muted border">Sama</span>';
+        else if(selisihIsi > 0) {
+            badge = `<span class="badge bg-success">+${selisihIsi}</span>`;
+            totalPlus += selisihIsi;
+        } else {
+            badge = `<span class="badge bg-danger">${selisihIsi}</span>`;
+            totalMinus += Math.abs(selisihIsi);
+        }
+
+        tbody.innerHTML += `
+            <tr>
+                <td class="fw-bold">${item.nama}</td>
+                <td class="text-center">${item.isi_lama}</td>
+                <td class="text-center fw-bold">${item.isi_baru}</td>
+                <td class="text-center">${badge}</td>
+                <td class="text-muted small fst-italic">${item.keterangan || '-'}</td>
+            </tr>
+        `;
+    });
+
+    // Update Ringkasan Dashboard di atas tabel
+    document.getElementById('hist-so-plus').innerText = totalPlus + " Pcs";
+    document.getElementById('hist-so-minus').innerText = totalMinus + " Pcs";
 }
 
 // ======================= BAGIAN RIWAYAT =======================
