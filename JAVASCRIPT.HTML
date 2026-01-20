@@ -460,7 +460,6 @@ function switchSettingTab(tab, btn) {
    if(tab === 'akun') loadSettingAkun(); // <--- TAMBAHAN: Load Akun saat tab diklik
 }
 
-// UPDATE 1: Fungsi Load Tabel Setting (Menampilkan No Rek)
 function loadSettingAkun() {
     const tbody = document.querySelector('#tabel-setting-akun tbody');
     tbody.innerHTML = '<tr><td colspan="5" class="text-center">Loading...</td></tr>';
@@ -473,7 +472,6 @@ function loadSettingAkun() {
         }
 
         data.forEach(acc => {
-            // acc.norek sekarang sudah tersedia dari backend
             let displayNorek = acc.norek ? acc.norek : '-';
 
             tbody.innerHTML += `
@@ -483,6 +481,9 @@ function loadSettingAkun() {
                 <td><span class="badge bg-light text-dark border">${acc.tipe}</span></td>
                 <td>${rupiah(acc.saldo)}</td>
                 <td>
+                    <button class="btn btn-sm btn-warning me-1" onclick="editAkun('${acc.id}', '${acc.nama}', '${displayNorek}', '${acc.tipe}', ${acc.saldo})">
+                        <i class="material-icons" style="font-size:14px">edit</i>
+                    </button>
                     <button class="btn btn-sm btn-light text-danger border" onclick="hapusAkunJS('${acc.id}')">
                         <i class="material-icons" style="font-size:14px">delete</i>
                     </button>
@@ -495,25 +496,52 @@ function loadSettingAkun() {
 
 // UPDATE 2: Fungsi Modal (Reset Input Baru)
 function modalTambahAkun() {
+    document.getElementById('edit-id-akun').value = ''; // KOSONGKAN ID (PENTING!)
     document.getElementById('input-akun-nama').value = '';
-    document.getElementById('input-akun-norek').value = ''; // Reset Norek
+    document.getElementById('input-akun-norek').value = '';
     document.getElementById('input-akun-tipe').value = 'Bank';
     document.getElementById('input-akun-saldo').value = '0';
+    
+    document.getElementById('label-modal-akun').innerText = "Tambah Akun Keuangan";
+    new bootstrap.Modal(document.getElementById('modalAkunBaru')).show();
+}
+
+function editAkun(id, nama, norek, tipe, saldo) {
+    // Isi form dengan data yang mau diedit
+    document.getElementById('edit-id-akun').value = id; // ID disimpan di hidden input
+    document.getElementById('input-akun-nama').value = nama;
+    document.getElementById('input-akun-norek').value = norek;
+    document.getElementById('input-akun-tipe').value = tipe;
+    
+    // Format Saldo ke Ribuan agar enak dilihat
+    document.getElementById('input-akun-saldo').value = Number(saldo).toLocaleString('id-ID');
+    
+    // Ubah Judul Modal
+    document.getElementById('label-modal-akun').innerText = "Edit Akun Keuangan";
+    
+    // Tampilkan Modal
     new bootstrap.Modal(document.getElementById('modalAkunBaru')).show();
 }
 
 // UPDATE 3: Fungsi Simpan (Kirim Norek)
 function simpanAkunBaruJS() {
+    // Ambil ID dari hidden input
+    const id = document.getElementById('edit-id-akun').value; 
+    
     const nama = document.getElementById('input-akun-nama').value;
-    const norek = document.getElementById('input-akun-norek').value || '-'; // Ambil Norek
+    const norek = document.getElementById('input-akun-norek').value || '-';
     const tipe = document.getElementById('input-akun-tipe').value;
-    const saldo = document.getElementById('input-akun-saldo').value;
+    
+    // Bersihkan titik ribuan dari saldo
+    const rawSaldo = document.getElementById('input-akun-saldo').value;
+    const saldo = Number(rawSaldo.replace(/\./g, '')) || 0;
 
     if(!nama) return myAlert('Error', 'Nama akun wajib diisi', 'warning');
 
     const payload = {
+        id: id, // KIRIM ID (Kalau kosong berarti baru, kalau ada isi berarti edit)
         nama: nama,
-        norek: norek, // Masukkan ke payload
+        norek: norek,
         tipe: tipe,
         saldo: saldo
     };
@@ -529,7 +557,6 @@ function simpanAkunBaruJS() {
 
     }).simpanAkunBaru(payload);
 }
-
 function hapusAkunJS(id) {
     myConfirm('Hapus Akun', 'Yakin ingin menghapus akun ini? Data transaksi lama tetap ada, tapi akun hilang dari pilihan.', () => {
         loading(true);
@@ -1056,6 +1083,16 @@ function bukaHalamanEdit(id) {
     document.getElementById('edit-prod-jual-tabung').value = Number(produk[10] || 0).toLocaleString('id-ID');
     document.getElementById('edit-prod-beli-tabung').value = Number(produk[9] || 0).toLocaleString('id-ID');
 
+    // Tambahkan di dalam fungsi bukaHalamanEdit(id)
+    
+    // Field Harga Refill Level 2 & 3
+    document.getElementById('edit-prod-jual-2').value = Number(produk[11] || 0).toLocaleString('id-ID');
+    document.getElementById('edit-prod-jual-3').value = Number(produk[12] || 0).toLocaleString('id-ID');
+
+    // Field Harga Tabung Level 2 & 3
+    document.getElementById('edit-prod-jual-tabung-2').value = Number(produk[13] || 0).toLocaleString('id-ID');
+    document.getElementById('edit-prod-jual-tabung-3').value = Number(produk[14] || 0).toLocaleString('id-ID');
+
     // Gambar
     const imgUrl = produk[8];
     const imgPrev = document.getElementById('edit-img-preview');
@@ -1097,9 +1134,16 @@ function prosesSimpanEdit() {
         kode: document.getElementById('edit-prod-kode').value,
         
         hargaJual: num('edit-prod-jual'),
+        hargaJualRefill2: num('edit-prod-jual-2'), // Baru
+        hargaJualRefill3: num('edit-prod-jual-3'), // Baru
+        
         hargaBeli: num('edit-prod-beli'),
-        hargaJualTabung: num('edit-prod-jual-tabung'), // [Baru]
-        hargaBeliTabung: num('edit-prod-beli-tabung'), // [Baru]
+        
+        hargaJualTabung: num('edit-prod-jual-tabung'),
+        hargaJualTabung2: num('edit-prod-jual-tabung-2'), // Baru
+        hargaJualTabung3: num('edit-prod-jual-tabung-3'), // Baru
+        
+        hargaBeliTabung: num('edit-prod-beli-tabung'),
         
         gambar: null 
     };
@@ -1220,64 +1264,96 @@ function ubahQtyModal(delta) {
     el.value = val;
 }
 
-// B. UPDATE: Fungsi Saat Produk Diklik
 function klikProdukPOS(namaProduk) {
     const produk = globalProdukList.find(p => p[1] === namaProduk);
     if (!produk) return;
 
     let stok = Number(produk[4]);
     
-    // HARGA JUAL
-    let hargaIsi = Number(produk[2]) || 0;
-    let hargaTabung = Number(produk[10]) || 0;
+    // AMBIL DATA HARGA (LEVEL 1, 2, 3)
+    // Refill
+    let r1 = Number(produk[2]) || 0;
+    let r2 = Number(produk[11]) || r1; // Jika kosong, pakai level 1
+    let r3 = Number(produk[12]) || r1;
 
-    // [BARU] HARGA BELI (MODAL) - Diambil dari Kolom D (Index 3) & J (Index 9)
+    // Tabung
+    let t1 = Number(produk[10]) || 0;
+    let t2 = Number(produk[13]) || t1;
+    let t3 = Number(produk[14]) || t1;
+
+    // HPP (Modal)
     let hppIsi = Number(produk[3]) || 0;     
     let hppTabung = Number(produk[9]) || 0;  
 
     let mode = document.querySelector('input[name="posMode"]:checked').value;
     
-    // Simpan data lengkap ke temp (termasuk HPP)
+    // Simpan semua harga ke Variable Global Sementara
     tempProductPOS = { 
         nama: produk[1], 
-        hargaIsi, 
-        hargaTabung, 
-        hppIsi,       // <--- Simpan HPP Isi
-        hppTabung,    // <--- Simpan HPP Tabung
-        stok, 
-        mode 
+        stok, mode, hppIsi, hppTabung,
+        hargaRefill: { 1: r1, 2: r2, 3: r3 },
+        hargaTabung: { 1: t1, 2: t2, 3: t3 }
     };
 
     document.getElementById('qty-modal-title').innerText = produk[1];
     
-    // Setup UI Toggle & Harga Awal
+    // Reset Radio Button ke Level 1
+    document.getElementById('btn-lvl-1').checked = true;
+
+    // Setup UI Toggle
     const boxToggle = document.getElementById('box-toggle-tabung');
-    const toggleInput = document.getElementById('toggle-isi-tabung');
-    const inputHarga = document.getElementById('input-harga-custom');
-
-    let hargaAwal = 0;
-
     if (mode === 'Beli Tabung Baru') {
         boxToggle.classList.remove('d-none');
-        toggleInput.checked = true; 
-        hargaAwal = hargaTabung + hargaIsi;
+        document.getElementById('toggle-isi-tabung').checked = true; 
         updateTampilanToggle(true); 
     } else {
         boxToggle.classList.add('d-none');
-        hargaAwal = hargaIsi;
-        if(stok <= 0) return myAlert('Stok Habis', 'Stok isi ulang habis.', 'error');
     }
 
-    inputHarga.value = Number(hargaAwal).toLocaleString('id-ID');
     document.getElementById('input-qty-pos').value = 1;
     
+    // HITUNG HARGA LEVEL
+    hitungHargaLevel(); 
+
     // Reset Pesan Error
-    const elMsg = document.getElementById('qty-msg-error');
-    elMsg.classList.add('d-none');
-    elMsg.innerText = '';
+    document.getElementById('qty-msg-error').classList.add('d-none');
 
     new bootstrap.Modal(document.getElementById('modalInputQty')).show();
     setTimeout(() => { document.getElementById('input-qty-pos').focus(); }, 500);
+}
+
+function hitungHargaLevel() {
+    // 1. Cek Level yang Dipilih (1, 2, atau 3)
+    let level = document.querySelector('input[name="pilihLevel"]:checked').value;
+    
+    // 2. Ambil Harga Sesuai Level dari tempProductPOS
+    let hargaRefill = tempProductPOS.hargaRefill[level];
+    let hargaTabung = tempProductPOS.hargaTabung[level];
+
+    // 3. Cek Mode (Refill atau Baru)
+    let hargaTampil = 0;
+    
+    if (tempProductPOS.mode === 'Beli Tabung Baru') {
+        const isFull = document.getElementById('toggle-isi-tabung').checked;
+        updateTampilanToggle(isFull); // Update visual
+        
+        if (isFull) {
+            hargaTampil = hargaRefill + hargaTabung;
+        } else {
+            hargaTampil = hargaTabung; // Cuma wadah
+        }
+    } else {
+        // Mode Refill / Tukar
+        hargaTampil = hargaRefill;
+    }
+
+    // 4. Tampilkan ke Input Harga
+    const inputHarga = document.getElementById('input-harga-custom');
+    inputHarga.value = Number(hargaTampil).toLocaleString('id-ID');
+    
+    // Efek Kedip Kuning
+    inputHarga.style.backgroundColor = '#fff3cd';
+    setTimeout(() => { inputHarga.style.backgroundColor = 'transparent'; }, 200);
 }
 
 // C. UPDATE: Fungsi Hitung Harga & Animasi UI
@@ -1301,6 +1377,7 @@ function hitungHargaToggle() {
     setTimeout(() => { inputHarga.style.backgroundColor = 'transparent'; }, 300);
     
     inputHarga.value = Number(hargaBaru).toLocaleString('id-ID');
+    hitungHargaLevel();
 }
 
 // D. HELPER BARU: Update Tampilan Visual Toggle
@@ -1644,22 +1721,27 @@ function simpanProduk() {
     };
 
     // 3. Susun Data Form (Termasuk Field Baru untuk Tabung)
+    // Update bagian ini di dalam simpanProduk()
     const dataForm = {
         sku: document.getElementById('prod-sku').value,
         kode: document.getElementById('prod-kode').value,
         nama: document.getElementById('prod-nama').value, 
         
-        // Harga Refill (Isi Ulang)
+        // HARGA REFILL (LEVEL 1, 2, 3)
         hargaJual: cleanNum('prod-jual'), 
+        hargaJualRefill2: cleanNum('prod-jual-2'), // Baru
+        hargaJualRefill3: cleanNum('prod-jual-3'), // Baru
         hargaBeli: cleanNum('prod-beli'), 
         
-        // [BARU] Harga Tabung Kosong
+        // HARGA TABUNG (LEVEL 1, 2, 3)
         hargaJualTabung: cleanNum('prod-jual-tabung'),
+        hargaJualTabung2: cleanNum('prod-jual-tabung-2'), // Baru
+        hargaJualTabung3: cleanNum('prod-jual-tabung-3'), // Baru
         hargaBeliTabung: cleanNum('prod-beli-tabung'),
         
         stokIsi: document.getElementById('prod-isi').value, 
         stokKosong: document.getElementById('prod-kosong').value,
-        gambar: null // Default null, nanti diisi jika ada file
+        gambar: null 
     };
 
     // Validasi Sederhana
@@ -4993,29 +5075,57 @@ function tampilkanInvoice(dataPayload, idTrx) {
 
     // --- 5. HALAMAN SURAT JALAN (Biarkan Sama) ---
     // (Copy paste kode surat jalan lama Anda di sini, atau biarkan tidak diubah)
+    // --- 5. HALAMAN SURAT JALAN (DIPERBARUI) ---
     const headerSJ = headerPT.replace('INVOICE', 'SURAT JALAN'); 
+    
+    // HTML Tambahan untuk Info Kendaraan
+    const infoLogistik = `
+        <div class="row mb-2 border border-dark p-2 mx-1" style="font-size:9pt; background-color:#f8f9fa;">
+            <div class="col-6">
+                <table style="width:100%;">
+                    <tr><td width="90"><strong>NOPOL MOBIL</strong></td><td>: ......................................</td></tr>
+                    <tr><td><strong>NAMA SUPIR</strong></td><td>: ......................................</td></tr>
+                    <tr><td><strong>NAMA KENEK</strong></td><td>: ......................................</td></tr>
+                </table>
+            </div>
+            <div class="col-6">
+                <table style="width:100%;">
+                    <tr><td width="100"><strong>JAM MASUK</strong></td><td>: ........... : ........... WIB</td></tr>
+                    <tr><td><strong>JAM KELUAR</strong></td><td>: ........... : ........... WIB</td></tr>
+                    <tr><td><strong>PARAF SECURITY</strong></td><td>: ......................................</td></tr>
+                </table>
+            </div>
+        </div>
+    `;
+
     const htmlSuratJalan = `
       <div class="h-100">
          ${headerSJ}
+         
          <div class="alert alert-secondary p-1 mb-2 text-center fw-bold" style="font-size:10pt; border:1px solid #999;">
              DOKUMEN GUDANG / PENGIRIMAN
          </div>
+
          <div class="row mb-2" style="font-size:10pt">
              <div class="col-6">
-                 <small class="text-muted fw-bold">TUJUAN:</small><br>
+                 <small class="text-muted fw-bold">TUJUAN PENGIRIMAN:</small><br>
                  <strong class="text-dark fs-6">${dataPayload.pelanggan}</strong>
              </div>
              <div class="col-6 text-end">
-                 <small class="text-muted fw-bold">GUDANG:</small><br>
-                 <strong>________________</strong>
+                 <small class="text-muted fw-bold">NO. TRANSAKSI:</small><br>
+                 <strong>${idTrx}</strong>
              </div>
          </div>
+
+         ${infoLogistik}
+         
          <table class="table table-bordered border-dark mb-0 table-sm" style="border-color: #000 !important; font-size:10pt;">
              <thead class="bg-light text-center">
-                 <tr><th>Nama Barang / Deskripsi</th><th>Qty (Fisik)</th><th>Cek</th></tr>
+                 <tr><th>Nama Barang / Deskripsi</th><th>Qty</th><th>Cek Fisik</th></tr>
              </thead>
              <tbody class="text-center align-middle">${rowsSuratJalan}</tbody>
          </table>
+
          <div class="row mt-4 text-center" style="page-break-inside: avoid;">
             <div class="col-4"><small>Penerima,</small><br><br><br><br><small>( ....................... )</small></div>
             <div class="col-4"><small>Supir / Kurir,</small><br><br><br><br><small>( ....................... )</small></div>
