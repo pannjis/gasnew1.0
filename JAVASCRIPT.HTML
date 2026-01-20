@@ -7577,7 +7577,7 @@ function renderTabelDraftOpname() {
         badge.classList.add('d-none');
         msgKosong.classList.remove('d-none');
         document.getElementById('tabel-input-opname').classList.add('d-none');
-        return; // Stop render
+        return; 
     }
 
     listItems.forEach(item => {
@@ -7613,14 +7613,47 @@ function renderTabelDraftOpname() {
                 
                 <td><small class="text-muted fst-italic">${item.keterangan || '-'}</small></td>
                 
-                <td class="text-center">
-                    <button class="btn btn-sm btn-light text-danger" onclick="hapusItemDraft('${item.id}')" title="Hapus dari list">
+                <td class="text-center text-nowrap">
+                    <button class="btn btn-sm btn-light text-warning border me-1" onclick="editItemDraft('${item.id}')" title="Edit Data" style="display:inline-flex; align-items:center; justify-content:center;">
+                        <i class="material-icons" style="font-size:16px">edit</i>
+                    </button>
+                    <button class="btn btn-sm btn-light text-danger border" onclick="hapusItemDraft('${item.id}')" title="Hapus dari list" style="display:inline-flex; align-items:center; justify-content:center;">
                         <i class="material-icons" style="font-size:16px">delete</i>
                     </button>
                 </td>
             </tr>
         `;
     });
+}
+
+function editItemDraft(id) {
+    // 1. Ambil data dari variabel global draftBuffer
+    const item = draftBuffer[id];
+    
+    if(!item) {
+        return Swal.fire('Error', 'Data tidak ditemukan', 'error');
+    }
+
+    // 2. Isi Form Modal dengan Data Item
+    document.getElementById('op-id-produk').value = item.id; // Penting: ID lama harus masuk
+    document.getElementById('op-input-cari').value = item.nama;
+    
+    // Info System
+    document.getElementById('op-sys-isi').value = item.sysIsi;
+    document.getElementById('op-sys-ksg').value = item.sysKsg;
+
+    // Input Fisik (Yang diedit)
+    document.getElementById('op-fisik-isi').value = item.fisikIsi;
+    document.getElementById('op-fisik-ksg').value = item.fisikKosong;
+    document.getElementById('op-ket').value = item.keterangan || '';
+
+    // 3. Sembunyikan hasil pencarian jika masih terbuka
+    const dropdownSearch = document.getElementById('hasil-cari-produk-opname');
+    if(dropdownSearch) dropdownSearch.classList.add('d-none');
+
+    // 4. Buka Modal Input
+    var myModal = new bootstrap.Modal(document.getElementById('modalInputOpnameItem'));
+    myModal.show();
 }
 
 function hapusItemDraft(id) {
