@@ -7279,22 +7279,19 @@ function viewDetailSO(idSo, jsonString) {
 
   let totalPlus = 0;
   let totalMinus = 0;
-  let totalSelisihModal = 0; // Total Rupiah berdasarkan Harga Beli
-  let totalSelisihJual = 0;  // Total Rupiah berdasarkan Harga Jual
+  let totalSelisihModal = 0; 
+  let totalSelisihJual = 0;
 
   data.forEach(item => {
-    // 1. Cari Data Produk Master untuk ambil harga
+    // 1. Cari Data Produk Master
     let produkMaster = globalProdukList.find(p => p[1] === item.nama);
     
     let hppIsi = 0, hppTabung = 0;
     let jualIsi = 0, jualTabung = 0;
 
     if (produkMaster) {
-        // Harga Beli (Modal) - Index 3 & 9
         hppIsi = Number(produkMaster[3]) || 0;
         hppTabung = Number(produkMaster[9]) || 0;
-        
-        // Harga Jual - Index 2 & 10
         jualIsi = Number(produkMaster[2]) || 0;
         jualTabung = Number(produkMaster[10]) || 0;
     }
@@ -7309,63 +7306,85 @@ function viewDetailSO(idSo, jsonString) {
     if (selisihKsg > 0) totalPlus += selisihKsg;
     if (selisihKsg < 0) totalMinus += Math.abs(selisihKsg);
 
-    // 4. Hitung Nilai Rupiah (Dua Versi)
-    // a. Berdasarkan Modal (Beli)
+    // 4. Hitung Nilai Rupiah
     let nilaiModal = (selisihIsi * hppIsi) + (selisihKsg * hppTabung);
     totalSelisihModal += nilaiModal;
 
-    // b. Berdasarkan Harga Jual
     let nilaiJual = (selisihIsi * jualIsi) + (selisihKsg * jualTabung);
     totalSelisihJual += nilaiJual;
 
-    // Helper formatter tampilan badge selisih fisik
+    // Helper formatter badge
     const fmtDiff = (val) => {
         if(val > 0) return `<span class="badge bg-success">+${val}</span>`;
         if(val < 0) return `<span class="badge bg-danger">${val}</span>`;
         return `<span class="text-muted">-</span>`;
     };
     
-    // Warna Text Uang (Merah jika minus, Hijau jika plus)
+    // Warna Text Uang di Tabel
     let colorModal = nilaiModal < 0 ? 'text-danger' : (nilaiModal > 0 ? 'text-success' : 'text-muted');
     let colorJual = nilaiJual < 0 ? 'text-danger' : (nilaiJual > 0 ? 'text-success' : 'text-muted');
 
     tbody.innerHTML += `
       <tr>
-        <td class="fw-bold text-dark">${item.nama}</td>
+        <td class="fw-bold text-dark align-middle">${item.nama}</td>
         
-        <td class="text-center bg-light text-muted" style="font-size:12px">
+        <td class="text-center bg-light text-muted align-middle" style="font-size:12px">
             ${item.isi_lama} &rarr; <b>${item.isi_baru}</b>
         </td>
-        <td class="text-center">${fmtDiff(selisihIsi)}</td>
+        <td class="text-center align-middle">${fmtDiff(selisihIsi)}</td>
 
-        <td class="text-center bg-light text-muted" style="font-size:12px">
+        <td class="text-center bg-light text-muted align-middle" style="font-size:12px">
             ${item.kosong_lama} &rarr; <b>${item.kosong_baru}</b>
         </td>
-        <td class="text-center">${fmtDiff(selisihKsg)}</td>
+        <td class="text-center align-middle">${fmtDiff(selisihKsg)}</td>
 
-        <td class="text-end">
-            <div class="${colorModal} fw-bold" style="font-size:11px;">M: ${rupiah(nilaiModal)}</div>
-            <div class="${colorJual} fw-bold" style="font-size:11px;">J: ${rupiah(nilaiJual)}</div>
+        <td class="text-end fw-bold align-middle ${colorModal}" style="font-size:11px;">
+            ${rupiah(nilaiModal)}
         </td>
-        <td><small class="text-muted fst-italic">${item.keterangan || '-'}</small></td>
+        <td class="text-end fw-bold align-middle ${colorJual}" style="font-size:11px;">
+            ${rupiah(nilaiJual)}
+        </td>
+        
+        <td class="text-start align-middle" style="white-space: normal; word-wrap: break-word; line-height: 1.2;">
+            <small class="text-muted fst-italic">${item.keterangan || '-'}</small>
+        </td>
       </tr>
     `;
   });
 
-  // 5. Update Kartu Statistik di Atas
+  // 5. Update Kartu Statistik (BAGIAN INI YANG DI UPDATE)
+  const fmtMoney = (val) => val < 0 ? `-${rupiah(Math.abs(val))}` : `+${rupiah(val)}`;
+
   document.getElementById('hist-so-plus').innerText = totalPlus + " Pcs";
   document.getElementById('hist-so-minus').innerText = totalMinus + " Pcs";
   
-  // Format Label Total (Jika minus kasih tanda negatif di depan Rupiah)
-  const fmtMoney = (val) => val < 0 ? `-${rupiah(Math.abs(val))}` : `+${rupiah(val)}`;
+  // Update 2 Card Baru
+  document.getElementById('hist-so-total-modal').innerText = fmtMoney(totalSelisihModal);
+  document.getElementById('hist-so-total-jual').innerText = fmtMoney(totalSelisihJual);
 
-  // Tampilkan 2 Baris Total (Modal & Jual)
-  document.getElementById('hist-so-rugi').innerHTML = `
-    <div style="font-size:12px; margin-bottom:2px;">Modal: ${fmtMoney(totalSelisihModal)}</div>
-    <div style="font-size:12px; color:#ffeb3b;">Jual: ${fmtMoney(totalSelisihJual)}</div>
+  // Warnai teks card total (Merah jika minus, Hijau jika plus)
+  document.getElementById('hist-so-total-modal').className = `fw-bold ${totalSelisihModal < 0 ? 'text-danger' : 'text-success'}`;
+  document.getElementById('hist-so-total-jual').className = `fw-bold ${totalSelisihJual < 0 ? 'text-danger' : 'text-success'}`;
+
+
+  // 6. BARIS TOTAL DI TABEL BAWAH
+  const colorTotalModal = totalSelisihModal < 0 ? 'text-danger' : 'text-success';
+  const colorTotalJual = totalSelisihJual < 0 ? 'text-danger' : 'text-success';
+
+  tbody.innerHTML += `
+    <tr class="bg-light fw-bold" style="border-top: 2px solid #6c757d;">
+        <td colspan="5" class="text-end text-dark align-middle">TOTAL AKUMULASI :</td>
+        <td class="text-end align-middle ${colorTotalModal}" style="font-size:12px;">
+             ${fmtMoney(totalSelisihModal)}
+        </td>
+        <td class="text-end align-middle ${colorTotalJual}" style="font-size:12px;">
+             ${fmtMoney(totalSelisihJual)}
+        </td>
+        <td></td> 
+    </tr>
   `;
 
-  // SWITCH PAGE: Sembunyikan List Riwayat, Tampilkan Detail
+  // SWITCH PAGE
   document.getElementById('tab-riwayat-opname').classList.add('d-none'); 
   document.getElementById('page-detail-history-so').classList.remove('d-none'); 
   document.getElementById('tabOpname').classList.add('d-none');
