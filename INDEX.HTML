@@ -339,14 +339,17 @@
                       <span class="fw-bold" id="pos-subtotal">Rp 0</span>
                   </div>
 
-                  <div class="d-flex justify-content-between align-items-center mb-3">
-                      <span class="text-danger fw-bold" style="font-size:13px;">Potongan / Diskon</span>
-                      <div class="input-group input-group-sm" style="width: 140px;">
-                          <span class="input-group-text bg-white text-danger border-end-0">Rp</span>
-                          <input type="text" id="pos-input-diskon" class="form-control text-end border-start-0 text-danger fw-bold" 
-                                placeholder="0" onkeyup="hitungDiskonRealtime(this)">
-                      </div>
-                  </div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-danger fw-bold" style="font-size:13px;">Potongan / Diskon</span>
+                        <div class="input-group input-group-sm" style="width: 160px;">
+                            <button class="btn btn-outline-danger fw-bold" type="button" id="btn-toggle-diskon" onclick="toggleModeDiskon()">Rp</button>
+                            <input type="text" id="pos-input-diskon" class="form-control text-end text-danger fw-bold" 
+                                  placeholder="0" onkeyup="hitungDiskonRealtime(this)">
+                        </div>
+                    </div>
+                    <div id="info-diskon-nominal" class="text-end text-muted small mb-2 d-none" style="font-size:11px; margin-top:-10px;">
+                        (- Rp 0)
+                    </div>
 
                   <hr class="my-2">
 
