@@ -17,6 +17,7 @@
   let dataBeliTemp = [];
   let keranjangBeli = [];
   let globalProdukList = [];
+  let draftBuffer = {};
   let tempProductPOS = {};
   let globalModalObj;
   let diskonMode = 'Rp'; // Default Rupiah
@@ -333,6 +334,11 @@ function showPage(pageId) {
 
         if(tabLaba) tabLaba.classList.add('show', 'active');
         if(btnLaba) btnLaba.classList.add('active');
+
+        if(pageId === 'stok-opname') {
+        // Reset Tab ke Input saat menu diklik
+        switchTabOpname('input');
+        }
 
         // 4. Load Data Laporan
         const elStart = document.getElementById('lap-start');
@@ -6877,6 +6883,269 @@ function tampilkanLogAktivitas() {
         });
         
     }).getLogAktivitas();
+}
+
+// ==========================================
+// LOGIKA STOK OPNAME (BUFFER & HISTORY)
+// ==========================================
+// 1. Fungsi Ganti Tab (Input <-> Riwayat)
+function switchTabOpname(tab) {
+  // Atur kelas tombol active
+  document.querySelectorAll('#tabOpname .nav-link').forEach(btn => btn.classList.remove('active'));
+  
+  if (tab === 'input') {
+    document.getElementById('tab-input-opname').classList.remove('d-none');
+    document.getElementById('tab-riwayat-opname').classList.add('d-none');
+    document.querySelector('#tabOpname li:nth-child(1) button').classList.add('active');
+    
+    // Load data input hanya jika belum ada (atau mau refresh manual)
+    if(document.querySelector('#tabel-input-opname tbody').children.length === 0) {
+        loadDataInputOpname();
+    }
+  } else {
+    document.getElementById('tab-input-opname').classList.add('d-none');
+    document.getElementById('tab-riwayat-opname').classList.remove('d-none');
+    document.querySelector('#tabOpname li:nth-child(2) button').classList.add('active');
+    loadRiwayatSO();
+  }
+}
+
+// ======================= BAGIAN INPUT & DRAFT =======================
+
+// 2. Load Data Produk ke Tabel Input
+function loadDataInputOpname() {
+  // Jika buffer masih ada isinya, kita peringatkan atau biarkan? 
+  // Di sini kita biarkan user load, tapi buffer akan reset jika halaman direfresh total.
+  
+  loading(true);
+  google.script.run.withSuccessHandler(data => {
+    loading(false);
+    renderTabelInputOpname(data);
+  }).getData('PRODUK');
+}
+
+function renderTabelInputOpname(data) {
+  const tb = document.querySelector('#tabel-input-opname tbody');
+  tb.innerHTML = '';
+
+  data.forEach(row => {
+    // row[0]=ID, [1]=Nama, [4]=StokIsi, [5]=StokKosong
+    let id = row[0];
+    
+    // Cek apakah produk ini sudah ada di draftBuffer (jika user pindah halaman lalu balik lagi)
+    let valIsi = draftBuffer[id] ? draftBuffer[id].fisikIsi : '';
+    let valKsg = draftBuffer[id] ? draftBuffer[id].fisikKosong : '';
+    let valKet = draftBuffer[id] ? draftBuffer[id].keterangan : '';
+    
+    // Warna background kuning jika ada di draft
+    let bgClass = draftBuffer[id] ? 'bg-warning bg-opacity-10' : ''; 
+
+    tb.innerHTML += `
+      <tr class="${bgClass}" id="row-op-${id}">
+        <td class="fw-bold text-dark">${row[1]}</td>
+        
+        <td class="text-center bg-light text-muted fw-bold">${row[4]}</td>
+        <td>
+          <input type="number" class="form-control form-control-sm text-center border-primary fw-bold" 
+             placeholder="${row[4]}" value="${valIsi}"
+             onchange="updateBuffer('${id}', '${row[1]}', ${row[4]}, ${row[5]}, this)">
+        </td>
+        
+        <td class="text-center bg-light text-muted fw-bold">${row[5]}</td>
+        <td>
+          <input type="number" class="form-control form-control-sm text-center border-secondary fw-bold" 
+             placeholder="${row[5]}" value="${valKsg}"
+             onchange="updateBuffer('${id}', '${row[1]}', ${row[4]}, ${row[5]}, this)">
+        </td>
+        
+        <td>
+          <input type="text" class="form-control form-control-sm" 
+             placeholder="Ket..." value="${valKet}"
+             onchange="updateBuffer('${id}', '${row[1]}', ${row[4]}, ${row[5]}, this)">
+        </td>
+      </tr>
+    `;
+  });
+}
+
+// 3. Update Buffer saat user mengetik
+function updateBuffer(id, nama, sysIsi, sysKsg, el) {
+  const row = document.getElementById(`row-op-${id}`);
+  
+  // Ambil nilai dari input fields di baris tersebut
+  const inputs = row.querySelectorAll('input'); 
+  const inputIsi = inputs[0].value;   // Input Fisik Isi
+  const inputKsg = inputs[1].value;   // Input Fisik Kosong
+  const inputKet = inputs[2].value;   // Input Keterangan
+
+  // Logika: Jika kedua input angka kosong, hapus dari draft (Batal ubah)
+  if (inputIsi === '' && inputKsg === '') {
+    delete draftBuffer[id];
+    row.classList.remove('bg-warning', 'bg-opacity-10');
+  } else {
+    // Jika salah satu diisi, yang kosong dianggap SAMA dengan sistem
+    const finalIsi = inputIsi === '' ? sysIsi : Number(inputIsi);
+    const finalKsg = inputKsg === '' ? sysKsg : Number(inputKsg);
+
+    // Simpan ke object Buffer
+    draftBuffer[id] = {
+      id: id,
+      nama: nama,
+      sysIsi: sysIsi,
+      sysKsg: sysKsg,
+      fisikIsi: finalIsi,
+      fisikKosong: finalKsg,
+      keterangan: inputKet
+    };
+    
+    // Beri highlight kuning
+    row.classList.add('bg-warning', 'bg-opacity-10');
+  }
+  
+  updateBadgeDraft();
+}
+
+function updateBadgeDraft() {
+  const count = Object.keys(draftBuffer).length;
+  const badge = document.getElementById('badge-draft');
+  badge.innerText = count;
+  if(count > 0) badge.classList.remove('d-none');
+  else badge.classList.add('d-none');
+}
+
+// 4. Filter Tabel Input (Pencarian)
+function filterTabelInputOpname() {
+  const k = document.getElementById('cari-opname-input').value.toLowerCase();
+  document.querySelectorAll('#tabel-input-opname tbody tr').forEach(tr => {
+    // Cari text di dalam tr (nama produk ada di td pertama)
+    tr.style.display = tr.innerText.toLowerCase().includes(k) ? '' : 'none';
+  });
+}
+
+// 5. Review Draft (Tampilkan Modal)
+function reviewDraft() {
+  const keys = Object.keys(draftBuffer);
+  if (keys.length === 0) return myAlert('Info', 'Belum ada data yang diubah.', 'info');
+
+  const tbody = document.getElementById('tbody-review-opname');
+  tbody.innerHTML = '';
+
+  keys.forEach(key => {
+    const item = draftBuffer[key];
+    
+    // Hitung selisih untuk tampilan
+    const selisihIsi = item.fisikIsi - item.sysIsi;
+    const selisihKsg = item.fisikKosong - item.sysKsg;
+
+    // Formatting Tampilan (Merah jika kurang, Hijau jika lebih, Abu jika tetap)
+    const fmtDiff = (val) => {
+        if(val > 0) return `<span class="text-success fw-bold">(+${val})</span>`;
+        if(val < 0) return `<span class="text-danger fw-bold">(${val})</span>`;
+        return `<span class="text-muted text-opacity-50">(-)</span>`;
+    };
+    
+    tbody.innerHTML += `
+      <tr>
+        <td class="fw-bold">${item.nama}</td>
+        <td class="text-center">
+            ${item.sysIsi} <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> <b>${item.fisikIsi}</b> ${fmtDiff(selisihIsi)}
+        </td>
+        <td class="text-center">
+            ${item.sysKsg} <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> <b>${item.fisikKosong}</b> ${fmtDiff(selisihKsg)}
+        </td>
+        <td><small class="text-muted">${item.keterangan}</small></td>
+      </tr>
+    `;
+  });
+
+  new bootstrap.Modal(document.getElementById('modalReviewOpname')).show();
+}
+
+// 6. Eksekusi Simpan ke Database
+// 6. Eksekusi Simpan ke Database (UPDATE REALTIME)
+function prosesSimpanSO() {
+  const payload = Object.values(draftBuffer); // Ubah object ke array
+  
+  // Tutup modal
+  bootstrap.Modal.getInstance(document.getElementById('modalReviewOpname')).hide();
+
+  loading(true);
+  google.script.run.withSuccessHandler(res => {
+    loading(false);
+    myAlert('Sukses', res, 'success');
+    
+    // Reset Draft & UI
+    draftBuffer = {}; 
+    updateBadgeDraft();
+    
+    // 1. Refresh Tabel Opname (Supaya angka sistem di tabel ini update)
+    loadDataInputOpname(); 
+    
+    // 2. [PENTING] Refresh Global Produk (Supaya Kasir & Tabel Produk update)
+    loadProduk(); 
+    
+  }).withFailureHandler(err => {
+    loading(false);
+    myAlert('Gagal', err.message, 'error');
+  }).simpanStokOpnameBulk(payload);
+}
+
+// ======================= BAGIAN RIWAYAT =======================
+
+function loadRiwayatSO() {
+  const tbody = document.querySelector('#tabel-riwayat-so tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="text-center">Memuat riwayat...</td></tr>';
+  
+  google.script.run.withSuccessHandler(data => {
+    tbody.innerHTML = '';
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Belum ada riwayat opname.</td></tr>';
+      return;
+    }
+
+    data.forEach(row => {
+      // row: [ID, Tanggal, Petugas, JmlItem, JSONString]
+      
+      // Encode JSON agar aman dimasukkan ke dalam atribut HTML onclick
+      let safeJson = encodeURIComponent(row[4]); 
+
+      tbody.innerHTML += `
+        <tr>
+          <td><span class="badge bg-secondary font-monospace">${row[0]}</span></td>
+          <td>${row[1]}</td>
+          <td>${row[2]}</td>
+          <td><span class="fw-bold">${row[3]}</span> Item</td>
+          <td class="text-center">
+            <button class="btn btn-sm btn-info text-white rounded-pill px-3" onclick="viewDetailSO('${row[0]}', '${safeJson}')">
+              <i class="material-icons align-middle" style="font-size:16px">visibility</i> Detail
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+  }).getRiwayatSO();
+}
+
+function viewDetailSO(idSo, jsonString) {
+  // Decode kembali data JSON
+  const data = JSON.parse(decodeURIComponent(jsonString));
+  
+  document.getElementById('title-detail-so').innerText = `Detail Opname: ${idSo}`;
+  const tbody = document.getElementById('tbody-detail-so');
+  tbody.innerHTML = '';
+
+  data.forEach(item => {
+    tbody.innerHTML += `
+      <tr>
+        <td class="fw-bold">${item.nama}</td>
+        <td>${item.isi_lama} <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> <b>${item.isi_baru}</b></td>
+        <td>${item.kosong_lama} <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> <b>${item.kosong_baru}</b></td>
+        <td class="text-muted"><small>${item.keterangan || '-'}</small></td>
+      </tr>
+    `;
+  });
+
+  new bootstrap.Modal(document.getElementById('modalDetailSO')).show();
 }
 
 // --- FUNGSI FORMAT RUPIAH SAAT MENGETIK ---
