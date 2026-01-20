@@ -335,19 +335,20 @@ function showPage(pageId) {
         if(tabLaba) tabLaba.classList.add('show', 'active');
         if(btnLaba) btnLaba.classList.add('active');
 
-        if (pageId === 'page-stok-opname' || pageId === 'stok-opname') {
-        // Cek apakah fungsi switchTabOpname ada sebelum dipanggil
-        if (typeof switchTabOpname === 'function') {
-            switchTabOpname('input'); 
-        }
-    }
-
         // 4. Load Data Laporan
         const elStart = document.getElementById('lap-start');
         if (!elStart.value) {
             setFilterLaporan('bulan_ini');
         } else {
             loadLaporanUtama();
+        }
+    }
+
+    // --- PINDAHKAN KESINI (KELUAR DARI BLOK LAPORAN) ---
+    if (pageId === 'page-stok-opname' || pageId === 'stok-opname') {
+        // Reset Tab Opname ke posisi awal (Input) agar tidak blank
+        if (typeof switchTabOpname === 'function') {
+            switchTabOpname('input'); 
         }
     }
 }
@@ -6899,40 +6900,34 @@ function tampilkanLogAktivitas() {
 // ==========================================
 // 1. Fungsi Ganti Tab (Input <-> Riwayat)
 function switchTabOpname(tab) {
-  // 1. TAMBAHAN PENTING: Reset tampilan Detail & Munculkan Menu Tab lagi
-  // (Wajib ada biar tidak blank saat balik dari detail)
-  const pageDetail = document.getElementById('page-detail-history-so');
-  if (pageDetail) pageDetail.classList.add('d-none'); // Tutup halaman detail
-  
-  const navTab = document.getElementById('tabOpname');
-  if (navTab) navTab.classList.remove('d-none'); // Munculkan lagi tombol tabnya!
-
-  // -----------------------------------------------------------------------
-
-  // Atur kelas tombol active (Kode asli Anda)
-  document.querySelectorAll('#tabOpname .nav-link').forEach(btn => btn.classList.remove('active'));
-  
-  if (tab === 'input') {
-    document.getElementById('tab-input-opname').classList.remove('d-none');
-    document.getElementById('tab-riwayat-opname').classList.add('d-none');
-    // Pastikan selector ini benar (sesuai urutan li di HTML Anda)
-    const btnInput = document.querySelector('#tabOpname li:nth-child(1) button'); 
-    if(btnInput) btnInput.classList.add('active');
+    // Reset UI Navigasi
+    document.querySelectorAll('#tabOpname .nav-link').forEach(btn => btn.classList.remove('active'));
     
-    // Load data input hanya jika belum ada (atau mau refresh manual)
-    const tbodyInput = document.querySelector('#tabel-input-opname tbody');
-    if(tbodyInput && tbodyInput.children.length === 0) {
-        loadDataInputOpname();
+    // Sembunyikan detail & munculkan tab menu (jaga-jaga)
+    document.getElementById('page-detail-history-so')?.classList.add('d-none');
+    document.getElementById('tabOpname')?.classList.remove('d-none');
+
+    if (tab === 'input') {
+        document.getElementById('tab-input-opname').classList.remove('d-none');
+        document.getElementById('tab-riwayat-opname').classList.add('d-none');
+        document.querySelector('#tabOpname li:nth-child(1) button')?.classList.add('active');
+
+        // [UBAH DISINI] Jangan loadDataInputOpname() yang lama (karena itu load semua)
+        // Cukup render apa yang ada di draft (keranjang sementara)
+        renderTabelDraftOpname(); 
+        
+        // Pastikan data produk global terupdate untuk pencarian
+        if(!globalProdukList || globalProdukList.length === 0) {
+            loadProduk(); // Load diam-diam di background
+        }
+
+    } else {
+        document.getElementById('tab-input-opname').classList.add('d-none');
+        document.getElementById('tab-riwayat-opname').classList.remove('d-none');
+        document.querySelector('#tabOpname li:nth-child(2) button')?.classList.add('active');
+        
+        loadRiwayatSO();
     }
-  } else {
-    document.getElementById('tab-input-opname').classList.add('d-none');
-    document.getElementById('tab-riwayat-opname').classList.remove('d-none');
-    // Pastikan selector ini benar
-    const btnRiwayat = document.querySelector('#tabOpname li:nth-child(2) button');
-    if(btnRiwayat) btnRiwayat.classList.add('active');
-    
-    loadRiwayatSO();
-  }
 }
 
 // ======================= BAGIAN INPUT & DRAFT =======================
@@ -6965,21 +6960,23 @@ function renderTabelInputOpname(data) {
     // Warna background kuning jika ada di draft
     let bgClass = draftBuffer[id] ? 'bg-warning bg-opacity-10' : ''; 
 
-    tb.innerHTML += `
+tb.innerHTML += `
       <tr class="${bgClass}" id="row-op-${id}">
         <td class="fw-bold text-dark">${row[1]}</td>
         
         <td class="text-center bg-light text-muted fw-bold">${row[4]}</td>
+        
         <td>
           <input type="number" class="form-control form-control-sm text-center border-primary fw-bold" 
-             placeholder="${row[4]}" value="${valIsi}"
+             value="${valIsi}" 
              onchange="updateBuffer('${id}', '${row[1]}', ${row[4]}, ${row[5]}, this)">
         </td>
         
         <td class="text-center bg-light text-muted fw-bold">${row[5]}</td>
+        
         <td>
           <input type="number" class="form-control form-control-sm text-center border-secondary fw-bold" 
-             placeholder="${row[5]}" value="${valKsg}"
+             value="${valKsg}" 
              onchange="updateBuffer('${id}', '${row[1]}', ${row[4]}, ${row[5]}, this)">
         </td>
         
@@ -7089,25 +7086,30 @@ function reviewDraft() {
 // 6. Eksekusi Simpan ke Database
 // 6. Eksekusi Simpan ke Database (UPDATE REALTIME)
 function prosesSimpanSO() {
-  const payload = Object.values(draftBuffer); // Ubah object ke array
+  const payload = Object.values(draftBuffer); 
   
-  // Tutup modal
-  bootstrap.Modal.getInstance(document.getElementById('modalReviewOpname')).hide();
+  // --- PERBAIKAN DISINI ---
+  const modalEl = document.getElementById('modalReviewOpname');
+  const modalInstance = bootstrap.Modal.getInstance(modalEl);
+  
+  if (modalInstance) {
+      modalInstance.hide(); // Tutup jika instance ditemukan
+  } else {
+      // Jika null (misal error), kita paksa init baru lalu tutup agar backdrop hilang
+      new bootstrap.Modal(modalEl).hide();
+  }
 
   loading(true);
   google.script.run.withSuccessHandler(res => {
     loading(false);
     myAlert('Sukses', res, 'success');
     
-    // Reset Draft & UI
+    // Reset
     draftBuffer = {}; 
-    updateBadgeDraft();
+    renderTabelDraftOpname(); // Ini akan otomatis memunculkan pesan "Belum ada produk"
     
-    // 1. Refresh Tabel Opname (Supaya angka sistem di tabel ini update)
-    loadDataInputOpname(); 
-    
-    // 2. [PENTING] Refresh Global Produk (Supaya Kasir & Tabel Produk update)
-    loadProduk(); 
+    // Refresh data global
+    loadProduk();
     
   }).withFailureHandler(err => {
     loading(false);
@@ -7251,6 +7253,235 @@ function tutupDetailHistorySO() {
   // Kembalikan tampilan halaman stok opname utama
   document.getElementById('tabOpname').classList.remove('d-none');
   document.getElementById('tab-riwayat-opname').classList.remove('d-none');
+}
+
+// --- LOGIKA PENCARIAN PRODUK OPNAME (GOOGLE STYLE) ---
+
+// 1. Saat Mengetik di Kolom Cari
+document.getElementById('op-input-cari')?.addEventListener('input', function() {
+    const keyword = this.value.toLowerCase();
+    const container = document.getElementById('hasil-cari-produk-opname');
+    
+    // Jika kosong, sembunyikan
+    if(keyword.length < 1) {
+        container.classList.add('d-none');
+        return; 
+    }
+
+    // Filter Data dari Global Produk
+    // globalProdukList format: [0]ID, [1]Nama, [2]Jual, [3]Beli, [4]StokIsi, [5]StokKsg
+    const hasil = globalProdukList.filter(p => {
+        return p[1].toLowerCase().includes(keyword);
+    });
+
+    container.innerHTML = ''; // Bersihkan list lama
+
+    if(hasil.length === 0) {
+         container.innerHTML = '<div class="list-group-item text-muted small">Produk tidak ditemukan.</div>';
+    } else {
+        // Tampilkan Maksimal 10 Hasil biar ringan
+        hasil.slice(0, 10).forEach(p => {
+            const btn = document.createElement('button');
+            btn.className = 'list-group-item list-group-item-action py-2 text-start';
+            // Tampilan di list: Nama Produk (Stok: 10 | 5)
+            btn.innerHTML = `
+                <div class="fw-bold text-dark small">${p[1]}</div>
+                <div class="text-muted" style="font-size:10px">Sistem: Isi ${p[4]} | Ksg ${p[5]}</div>
+            `;
+            
+            // SAAT DIPILIH (KLIK)
+            btn.onclick = function() {
+                pilihProdukOpname(p);
+            };
+            
+            container.appendChild(btn);
+        });
+    }
+    
+    container.classList.remove('d-none'); // Munculkan Dropdown
+});
+
+// 2. Fungsi Mengisi Form Saat Produk Diklik
+function pilihProdukOpname(produk) {
+    // Isi Inputan
+    document.getElementById('op-input-cari').value = produk[1]; // Nama
+    document.getElementById('op-id-produk').value = produk[0];  // ID
+    
+    document.getElementById('op-sys-isi').value = produk[4];    // Stok Isi
+    document.getElementById('op-sys-ksg').value = produk[5];    // Stok Kosong
+    
+    // Sembunyikan Dropdown
+    document.getElementById('hasil-cari-produk-opname').classList.add('d-none');
+    
+    // Langsung fokus ke input Fisik Isi biar cepat
+    document.getElementById('op-fisik-isi').focus();
+}
+
+// 3. Sembunyikan Dropdown jika klik di luar area
+document.addEventListener('click', function(e) {
+    if (e.target.id !== 'op-input-cari') {
+        document.getElementById('hasil-cari-produk-opname')?.classList.add('d-none');
+    }
+});
+
+// 4. Update Modal Buka (Reset Form)
+function bukaModalTambahOpname() {
+    // Reset Form
+    document.getElementById('op-input-cari').value = '';
+    document.getElementById('op-id-produk').value = '';
+    document.getElementById('op-sys-isi').value = '';
+    document.getElementById('op-fisik-isi').value = '';
+    document.getElementById('op-sys-ksg').value = '';
+    document.getElementById('op-fisik-ksg').value = '';
+    document.getElementById('op-ket').value = '';
+    
+    // Sembunyikan dropdown sisa sebelumnya
+    document.getElementById('hasil-cari-produk-opname').classList.add('d-none');
+
+    // Pastikan Data Produk Siap
+    if(!globalProdukList || globalProdukList.length === 0) {
+        loadProduk(); // Load diam-diam
+    }
+
+    // Tampilkan Modal
+    new bootstrap.Modal(document.getElementById('modalInputOpnameItem')).show();
+    
+    // Auto focus
+    setTimeout(() => document.getElementById('op-input-cari').focus(), 500);
+}
+// Dipanggil saat user memilih produk dari list
+function isiOtomatisOpname() {
+    const namaInput = document.getElementById('op-input-cari').value;
+    
+    // Cari data di globalProdukList
+    const produk = globalProdukList.find(p => p[1] === namaInput);
+    
+    if(produk) {
+        // Ketemu! Isi data sistem otomatis
+        document.getElementById('op-id-produk').value = produk[0]; // ID
+        document.getElementById('op-sys-isi').value = produk[4];   // Stok Isi
+        document.getElementById('op-sys-ksg').value = produk[5];   // Stok Kosong
+        
+        // Fokus langsung ke input fisik isi biar cepat
+        document.getElementById('op-fisik-isi').focus();
+    } else {
+        // Kalau nama ngawur/tidak ketemu
+        document.getElementById('op-id-produk').value = '';
+        document.getElementById('op-sys-isi').value = '';
+        document.getElementById('op-sys-ksg').value = '';
+    }
+}
+
+// Simpan dari Modal ke Draft Buffer
+function tambahItemKeDraft() {
+    const id = document.getElementById('op-id-produk').value;
+    const nama = document.getElementById('op-input-cari').value;
+    
+    // Validasi
+    if(!id) return myAlert('Error', 'Silakan pilih produk yang valid dari list.', 'warning');
+
+    const sysIsi = Number(document.getElementById('op-sys-isi').value);
+    const sysKsg = Number(document.getElementById('op-sys-ksg').value);
+    
+    let fisikIsi = document.getElementById('op-fisik-isi').value;
+    let fisikKsg = document.getElementById('op-fisik-ksg').value;
+    const ket = document.getElementById('op-ket').value;
+
+    // Default jika kosong = Dianggap SAMA dengan sistem (Tidak ada selisih)
+    if(fisikIsi === '') fisikIsi = sysIsi;
+    else fisikIsi = Number(fisikIsi);
+    
+    if(fisikKsg === '') fisikKsg = sysKsg;
+    else fisikKsg = Number(fisikKsg);
+
+    // Simpan ke Object Buffer (Key = ID Produk, biar gak dobel)
+    draftBuffer[id] = {
+      id: id,
+      nama: nama,
+      sysIsi: sysIsi,
+      sysKsg: sysKsg,
+      fisikIsi: fisikIsi,
+      fisikKosong: fisikKsg,
+      keterangan: ket
+    };
+
+    // Render Ulang & Tutup Modal
+    renderTabelDraftOpname();
+    bootstrap.Modal.getInstance(document.getElementById('modalInputOpnameItem')).hide();
+    
+    // Notif kecil (opsional)
+    // myAlert('Sukses', 'Produk ditambahkan ke list opname.', 'success');
+}
+
+function renderTabelDraftOpname() {
+    const tb = document.querySelector('#tabel-input-opname tbody');
+    const msgKosong = document.getElementById('msg-opname-kosong');
+    const badge = document.getElementById('badge-draft');
+    
+    tb.innerHTML = '';
+    
+    // Ubah Object Buffer jadi Array
+    const listItems = Object.values(draftBuffer);
+    
+    // Update Badge & Pesan Kosong
+    badge.innerText = listItems.length;
+    if(listItems.length > 0) {
+        badge.classList.remove('d-none');
+        msgKosong.classList.add('d-none');
+        document.getElementById('tabel-input-opname').classList.remove('d-none');
+    } else {
+        badge.classList.add('d-none');
+        msgKosong.classList.remove('d-none');
+        document.getElementById('tabel-input-opname').classList.add('d-none');
+        return; // Stop render
+    }
+
+    listItems.forEach(item => {
+        // Hitung Selisih
+        let selisihIsi = item.fisikIsi - item.sysIsi;
+        let selisihKsg = item.fisikKosong - item.sysKsg;
+
+        // Helper Label Selisih
+        const badgeDiff = (n) => {
+            if(n === 0) return '<span class="badge bg-light text-muted border">OK</span>';
+            if(n > 0) return `<span class="badge bg-success">+${n}</span>`;
+            return `<span class="badge bg-danger">${n}</span>`;
+        };
+
+        tb.innerHTML += `
+            <tr>
+                <td class="fw-bold text-dark">${item.nama}</td>
+                
+                <td class="text-center">
+                    <div class="small text-muted">Isi: ${item.sysIsi}</div>
+                    <div class="small text-muted">Ksg: ${item.sysKsg}</div>
+                </td>
+                
+                <td class="text-center">
+                    <div class="fw-bold">Isi: ${item.fisikIsi}</div>
+                    <div class="fw-bold">Ksg: ${item.fisikKosong}</div>
+                </td>
+                
+                <td class="text-center">
+                    <div>Isi: ${badgeDiff(selisihIsi)}</div>
+                    <div class="mt-1">Ksg: ${badgeDiff(selisihKsg)}</div>
+                </td>
+                
+                <td><small class="text-muted fst-italic">${item.keterangan || '-'}</small></td>
+                
+                <td class="text-center">
+                    <button class="btn btn-sm btn-light text-danger" onclick="hapusItemDraft('${item.id}')" title="Hapus dari list">
+                        <i class="material-icons" style="font-size:16px">delete</i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function hapusItemDraft(id) {
+    delete draftBuffer[id];
+    renderTabelDraftOpname();
 }
 
 // --- FUNGSI FORMAT RUPIAH SAAT MENGETIK ---
