@@ -19,6 +19,7 @@
   let globalProdukList = [];
   let tempProductPOS = {};
   let globalModalObj;
+  let diskonMode = 'Rp'; // Default Rupiah
   let onConfirmAction = null;
   const rupiah = (n) => new Intl.NumberFormat('id-ID', {style: 'currency', currency: 'IDR', minimumFractionDigits:0}).format(n);
 
@@ -1432,41 +1433,90 @@ document.getElementById('input-qty-pos')?.addEventListener("keypress", function(
   }
 });
 
-// --- UPDATE FUNGSI RENDER KERANJANG (ADA TOMBOL UBAH QTY) ---
+function toggleModeDiskon() {
+    const btn = document.getElementById('btn-toggle-diskon');
+    const input = document.getElementById('pos-input-diskon');
+    
+    if (diskonMode === 'Rp') {
+        diskonMode = '%';
+        btn.innerText = '%';
+        btn.classList.add('active'); 
+        input.placeholder = '0-100';
+    } else {
+        diskonMode = 'Rp';
+        btn.innerText = 'Rp';
+        btn.classList.remove('active');
+        input.placeholder = 'Nominal';
+    }
+
+    // Reset nilai agar tidak error hitungan (misal angka 100.000 jadi 100.000%)
+    input.value = '';
+    
+    // Hitung ulang keranjang
+    renderKeranjangPOS();
+}
+
+// --- 2. UPDATE FUNGSI INPUT (GANTI YANG LAMA) ---
+// --- 2. FUNGSI INPUT (FORMATTING) ---
+function hitungDiskonRealtime(input) {
+    // Ambil angka saja
+    let raw = input.value.replace(/\D/g, ''); 
+    let val = Number(raw);
+
+    if (diskonMode === '%') {
+        // Mode Persen: Batasi maks 100
+        if (val > 100) { val = 100; raw = '100'; }
+        if (val < 0) { val = 0; raw = '0'; }
+        
+        // Update input tanpa titik ribuan
+        input.value = val; 
+    } else {
+        // Mode Rupiah: Format Ribuan
+        if(raw !== '') {
+            input.value = new Intl.NumberFormat('id-ID').format(raw);
+        } else {
+            input.value = '';
+        }
+    }
+    
+    // Panggil fungsi hitung total
+    renderKeranjangPOS(); 
+}
+
+// --- 3. UPDATE RENDER KERANJANG (GANTI YANG LAMA) ---
 function renderKeranjangPOS() {
    const tbody = document.getElementById('pos-cart-body');
    const emptyMsg = document.getElementById('empty-cart-msg');
    
-   if(keranjangBelanja.length === 0) {
+   // 1. Cek jika keranjang kosong
+   if(!keranjangBelanja || keranjangBelanja.length === 0) {
       tbody.innerHTML = '';
       emptyMsg.classList.remove('d-none');
       document.getElementById('pos-subtotal').innerText = 'Rp 0';
       document.getElementById('pos-grand-total').innerText = 'Rp 0';
       document.getElementById('cart-count-badge').innerText = '0 Item';
+      document.getElementById('info-diskon-nominal').classList.add('d-none');
       return;
    }
 
    emptyMsg.classList.add('d-none');
    tbody.innerHTML = '';
+   
    let grandTotal = 0;
    let totalItem = 0;
 
+   // 2. Loop Keranjang & Hitung Subtotal
    keranjangBelanja.forEach((item, index) => {
-      grandTotal += item.total;
-      totalItem += item.qty;
+      // Pastikan angka valid
+      let totalBaris = Number(item.total) || 0;
+      grandTotal += totalBaris;
+      totalItem += Number(item.qty);
       
-      // --- UPDATE LOGIKA LABEL & WARNA ---
-      let labelTipe = item.tipe; // Pakai teks asli (Tabung Kosong / Tabung + Isi)
-      let warnaClass = 'text-success'; // Default Hijau (Baru)
-
-      // Cek kata kunci untuk menentukan warna
-      if(labelTipe.toLowerCase().includes('refill')) {
-          warnaClass = 'text-warning'; // Kuning (Refill)
-      } else if (labelTipe.toLowerCase().includes('kosong')) {
-          warnaClass = 'text-danger';  // Merah (Tabung Kosong)
-      }
+      let labelTipe = item.tipe; 
+      let warnaClass = 'text-success'; 
+      if(labelTipe.toLowerCase().includes('refill')) warnaClass = 'text-warning'; 
+      else if (labelTipe.toLowerCase().includes('kosong')) warnaClass = 'text-danger';
       
-      // Buat Badge HTML
       let badgeTipe = `<span class="${warnaClass} fw-bold" style="font-size:10px">● ${labelTipe}</span>`;
 
       tbody.innerHTML += `
@@ -1477,62 +1527,62 @@ function renderKeranjangPOS() {
                 ${badgeTipe}
                 <small class="text-muted" style="font-size:10px;">@${rupiah(item.hargaSatuan)}</small>
             </div>
-            
             <div class="input-group input-group-sm" style="width: 100px;">
-                <button class="btn btn-outline-secondary px-2 py-0 d-flex align-items-center justify-content-center" type="button" onclick="ubahQty(${index}, -1)" style="height:26px;">
-                    <i class="material-icons" style="font-size:14px">remove</i>
-                </button>
+                <button class="btn btn-outline-secondary px-2 py-0 d-flex align-items-center justify-content-center" type="button" onclick="ubahQty(${index}, -1)" style="height:26px;"><i class="material-icons" style="font-size:14px">remove</i></button>
                 <input type="text" class="form-control text-center px-0 py-0 fw-bold bg-white border-secondary" value="${item.qty}" readonly style="font-size:13px; height: 26px; border-left:0; border-right:0;">
-                <button class="btn btn-outline-primary px-2 py-0 d-flex align-items-center justify-content-center" type="button" onclick="ubahQty(${index}, 1)" style="height:26px;">
-                    <i class="material-icons" style="font-size:14px">add</i>
-                </button>
+                <button class="btn btn-outline-primary px-2 py-0 d-flex align-items-center justify-content-center" type="button" onclick="ubahQty(${index}, 1)" style="height:26px;"><i class="material-icons" style="font-size:14px">add</i></button>
             </div>
          </td>
          <td class="text-end pe-3 py-3 align-top">
-            <div class="fw-bold text-dark mb-2" style="font-size:13px;">${rupiah(item.total)}</div>
-            
-            <button class="btn btn-sm btn-light text-danger border-0 p-1 rounded-circle shadow-sm" onclick="hapusItemKeranjang(${index}); renderKeranjangPOS();" title="Hapus Item">
-               <i class="material-icons" style="font-size:18px">delete</i>
-            </button>
+            <div class="fw-bold text-dark mb-2" style="font-size:13px;">${rupiah(totalBaris)}</div>
+            <button class="btn btn-sm btn-light text-danger border-0 p-1 rounded-circle shadow-sm" onclick="hapusItemKeranjang(${index})"><i class="material-icons" style="font-size:18px">delete</i></button>
          </td>
-      </tr>
-      `;
+      </tr>`;
    });
 
-   // 1. Ambil nilai Diskon dari Input (Jika ada)
+   // 3. LOGIKA DISKON (Fix perhitungan)
    const inputDiskon = document.getElementById('pos-input-diskon');
-   let nilaiDiskon = 0;
+   const infoNominal = document.getElementById('info-diskon-nominal');
    
-   if(inputDiskon) {
-       // Hapus titik ribuan biar jadi angka murni
-       let raw = inputDiskon.value.replace(/\./g, '');
-       nilaiDiskon = Number(raw) || 0;
+   // Ambil nilai input, buang titik ribuan agar jadi angka murni
+   let rawVal = inputDiskon.value.replace(/\./g, '');
+   let inputValue = Number(rawVal) || 0; 
+   
+   let nilaiPotonganRupiah = 0;
+
+   if(diskonMode === '%') {
+       // Rumus: Total * (Persen / 100)
+       nilaiPotonganRupiah = grandTotal * (inputValue / 100);
+       
+       // Tampilkan info rupiah di bawah input persen
+       if(inputValue > 0) {
+           infoNominal.innerText = `Potongan: -${rupiah(nilaiPotonganRupiah)}`;
+           infoNominal.classList.remove('d-none');
+       } else {
+           infoNominal.classList.add('d-none');
+       }
+   } else {
+       // Rumus: Nominal langsung
+       nilaiPotonganRupiah = inputValue;
+       infoNominal.classList.add('d-none'); 
    }
 
-   // 2. Hitung Grand Total (Subtotal - Diskon)
-   let finalTotal = grandTotal - nilaiDiskon;
-   
-   // Cegah minus visual
-   if(finalTotal < 0) finalTotal = 0; 
+   // Pastikan potongan tidak lebih besar dari total belanja
+   if(nilaiPotonganRupiah > grandTotal) {
+       nilaiPotonganRupiah = grandTotal; 
+   }
 
-   // 3. Tampilkan ke UI
+   // 4. Hitung Final Total
+   let finalTotal = grandTotal - nilaiPotonganRupiah;
+   if(finalTotal < 0) finalTotal = 0;
+
+   // 5. Update UI Angka
    document.getElementById('pos-subtotal').innerText = rupiah(grandTotal);
    document.getElementById('pos-grand-total').innerText = rupiah(finalTotal);
    document.getElementById('cart-count-badge').innerText = totalItem + ' Item';
 }
 
-// [BARU] Fungsi Trigger saat Input Diskon Diketik
-function hitungDiskonRealtime(input) {
-    // Format Ribuan saat mengetik
-    let val = input.value.replace(/\D/g, '');
-    if(val !== '') {
-        input.value = Number(val).toLocaleString('id-ID');
-    } else {
-        input.value = '';
-    }
-    // Render ulang angka bawah (tanpa render ulang tabel biar gak berat)
-    renderKeranjangPOS(); 
-}
+
 
 // --- FUNGSI BARU: LOGIKA TAMBAH/KURANG QTY ---
 function ubahQty(index, delta) {
@@ -1791,42 +1841,50 @@ document.getElementById('input-fisik-tabung')?.addEventListener('input', functio
 
 // --- INI LOGIKA PEMBAYARAN UTAMA (YANG TADINYA ADA DI DALAM PROSESBAYARFINAL) ---
 // Kita pisahkan jadi fungsi sendiri agar bisa dipanggil dari dua tempat
+// --- 4. FUNGSI BAYAR (FIX DATA SAVE) ---
 function eksekusiBayarUtama() {
-    const totalBayarStr = document.getElementById('pos-grand-total').innerText; 
+    // Hitung ulang angka final untuk dikirim ke database
+    // Kita tidak ambil dari Text HTML (rawan error), tapi hitung ulang dari data mentah
     
-    const metodeDipilih = document.getElementById('pos-metode-bayar').value;
-    const pelangganDipilih = document.getElementById('kasir-pelanggan').value;
-    const tglJatuhTempo = document.getElementById('pos-jatuh-tempo').value;
-
-    // 1. Ambil Data Keuangan
-    const rawDiskon = document.getElementById('pos-input-diskon').value.replace(/\./g, '');
-    const nilaiDiskon = Number(rawDiskon) || 0;
-    
-    // Hitung Total Belanja Murni & Total Modal (HPP)
     let totalBelanjaMurni = 0;
     let totalHPP = 0;
     
     keranjangBelanja.forEach(item => {
-        totalBelanjaMurni += item.total;
-        totalHPP += (item.totalHpp || 0); 
+        totalBelanjaMurni += Number(item.total);
+        totalHPP += Number(item.totalHpp || 0); 
     });
-    
-    let grandTotalFinal = totalBelanjaMurni - nilaiDiskon;
 
-    // --- [VALIDASI PENTING] CEK APAKAH RUGI? ---
-    // Rumus: (Total Jual - Diskon) tidak boleh kurang dari Total Modal
-    if (grandTotalFinal < totalHPP) {
-        let selisih = totalHPP - grandTotalFinal;
-        return myAlert(
-            'Diskon Terlalu Besar!', 
-            `Harga jual jatuh di bawah modal (HPP).\n\nTotal Modal: ${rupiah(totalHPP)}\nJual setelah diskon: ${rupiah(grandTotalFinal)}\n\nAnda rugi: ${rupiah(selisih)}`, 
-            'error'
-        );
+    // Ambil Data Diskon
+    const inputDiskon = document.getElementById('pos-input-diskon');
+    let inputValue = Number(inputDiskon.value.replace(/\./g, '')) || 0;
+    let nilaiDiskonFinal = 0;
+
+    if(diskonMode === '%') {
+        nilaiDiskonFinal = totalBelanjaMurni * (inputValue / 100);
+    } else {
+        nilaiDiskonFinal = inputValue;
     }
 
-    // Validasi Pelanggan
-    if (!pelangganDipilih || pelangganDipilih === "") {
-        return myAlert('Pilih Pelanggan', 'Anda belum memilih pelanggan.\nSilakan pilih "Umum" atau nama pelanggan lain.', 'warning');
+    // Proteksi Diskon Kebesaran
+    if(nilaiDiskonFinal > totalBelanjaMurni) {
+        nilaiDiskonFinal = totalBelanjaMurni;
+    }
+
+    let grandTotalFinal = totalBelanjaMurni - nilaiDiskonFinal;
+
+    // Cek Profit/Rugi
+    if (grandTotalFinal < totalHPP) {
+        let selisih = totalHPP - grandTotalFinal;
+        return myAlert('Rugi', `Diskon kebesaran! Harga jual di bawah modal. Selisih: ${rupiah(selisih)}`, 'error');
+    }
+    
+    // Validasi Pelanggan & Metode
+    const pelangganDipilih = document.getElementById('kasir-pelanggan').value;
+    const metodeDipilih = document.getElementById('pos-metode-bayar').value;
+    const tglJatuhTempo = document.getElementById('pos-jatuh-tempo').value;
+
+     if (!pelangganDipilih || pelangganDipilih === "") {
+        return myAlert('Pilih Pelanggan', 'Anda belum memilih pelanggan.', 'warning');
     }
 
     if(metodeDipilih === 'Hutang') {
@@ -1834,38 +1892,37 @@ function eksekusiBayarUtama() {
         if(!tglJatuhTempo) return myAlert('Data Belum Lengkap', 'Isi tanggal jatuh tempo.', 'warning');
     }
 
-    // Konfirmasi Akhir
-    myConfirm('Konfirmasi Pembayaran', `Total: ${rupiah(grandTotalFinal)}\n(Diskon: ${rupiah(nilaiDiskon)}) \n\nSimpan data ini?`, () => {
+    // Konfirmasi
+    myConfirm('Konfirmasi Pembayaran', `Total: ${rupiah(grandTotalFinal)}\n(Diskon: ${rupiah(nilaiDiskonFinal)}) \n\nSimpan data ini?`, () => {
         const payload = {
             pelanggan: pelangganDipilih,
             kasir: currentUser.nama || 'Admin',
             metode: metodeDipilih,
             jatuhTempo: (metodeDipilih === 'Hutang') ? tglJatuhTempo : '', 
             items: keranjangBelanja,
-            // [BARU] Kirim data diskon ke backend (opsional, untuk dicatat)
-            diskon: nilaiDiskon, 
+            diskon: nilaiDiskonFinal, // PENTING: Kirim nominal Rupiah ke DB
             totalFinal: grandTotalFinal
         };
 
         loading(true);
         google.script.run.withSuccessHandler(res => {
            loading(false);
-           
-           // 1. Tampilkan Invoice
            const idTrxSementara = 'KBA-' + Date.now(); 
            tampilkanInvoice(payload, idTrxSementara);
            
-           // 2. Reset Form
+           // Reset Form Setelah Sukses
            document.getElementById('kasir-pelanggan').value = ""; 
+           document.getElementById('pos-input-diskon').value = '';
+           document.getElementById('info-diskon-nominal').classList.add('d-none');
            
-           // 3. REFRESH DATA (INI YANG KEMARIN LUPA)
-           loadProduk();       // Update Stok
-           loadDashboard();    // Update Angka Dashboard (Realtime)
-           loadKeuangan();     // Update Tabel Arus Kas (Realtime)
+           // Reset Keranjang
+           keranjangBelanja = [];
+           renderKeranjangPOS(); // Render keranjang kosong
            
+           // Reload Data Lain
+           loadProduk(); loadDashboard(); loadKeuangan();
         }).withFailureHandler(err => {
-           loading(false);
-           myAlert('Gagal', err.message, 'error');
+           loading(false); myAlert('Gagal', err.message, 'error');
         }).simpanTransaksiBulk(payload);
     });
 }
