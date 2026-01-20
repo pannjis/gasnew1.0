@@ -2514,26 +2514,81 @@
   </div>
 </div>
 
-<div class="modal fade" id="modalDetailSO" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header bg-info text-white">
-        <h5 class="modal-title fw-bold" id="title-detail-so">Detail Opname</h5>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+<div id="page-detail-history-so" class="page-section d-none">
+  
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h3 class="page-title fw-bold">
+            <i class="material-icons align-middle me-2">history_edu</i>Detail Riwayat Opname
+        </h3>
+        <small class="text-muted" id="info-id-so">ID: -</small>
+    </div>
+    <button class="btn btn-secondary rounded-pill px-4 fw-bold" onclick="tutupDetailHistorySO()">
+      <i class="material-icons align-middle me-1">arrow_back</i> Kembali
+    </button>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm bg-success text-white">
+        <div class="card-body">
+          <h6 class="text-uppercase fw-bold opacity-75 small">Total Surplus (+)</h6>
+          <h3 class="fw-bold mt-2 mb-0" id="hist-so-plus">0 Item</h3>
+          <small>Fisik > Sistem</small>
+        </div>
       </div>
-      <div class="modal-body">
-        <table class="table table-sm table-bordered align-middle">
-          <thead class="bg-light">
-            <tr>
-              <th>Produk</th>
-              <th>Isi (Lama <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> Baru)</th>
-              <th>Kosong (Lama <i class="material-icons align-middle" style="font-size:12px">arrow_forward</i> Baru)</th>
-              <th>Ket</th>
-            </tr>
-          </thead>
-          <tbody id="tbody-detail-so"></tbody>
-        </table>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm bg-warning text-dark">
+        <div class="card-body">
+          <h6 class="text-uppercase fw-bold opacity-75 small">Total Defisit (-)</h6>
+          <h3 class="fw-bold mt-2 mb-0" id="hist-so-minus">0 Item</h3>
+          <small>Fisik < Sistem</small>
+        </div>
       </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card border-0 shadow-sm bg-danger text-white">
+        <div class="card-body">
+          <h6 class="text-uppercase fw-bold opacity-75 small">Akumulasi Kerugian (Net)</h6>
+          <h3 class="fw-bold mt-2 mb-0" id="hist-so-rugi">Rp 0</h3>
+          <small>Selisih Aset (Rupiah)</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+      <h6 class="fw-bold m-0 text-dark">Rincian Per Item</h6>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-success rounded-pill px-3" onclick="exportKeExcel('tabel-detail-history-so', 'Detail_Opname')">
+           <i class="material-icons align-middle me-1" style="font-size:16px">table_view</i> Excel
+        </button>
+        <button class="btn btn-sm btn-danger rounded-pill px-3" onclick="printLaporanPDF('tabel-detail-history-so', 'Laporan Detail Opname')">
+           <i class="material-icons align-middle me-1" style="font-size:16px">picture_as_pdf</i> PDF
+        </button>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover align-middle mb-0" id="tabel-detail-history-so">
+        <thead class="bg-light text-center">
+          <tr>
+            <th rowspan="2" class="align-middle">Produk</th>
+            <th colspan="2">Perubahan Isi</th>
+            <th colspan="2">Perubahan Wadah</th>
+            <th rowspan="2" class="align-middle">Nilai Selisih</th>
+            <th rowspan="2" class="align-middle">Keterangan</th>
+          </tr>
+          <tr>
+            <th class="small py-1">Lama <i class="material-icons" style="font-size:10px">arrow_forward</i> Baru</th>
+            <th class="small py-1">Selisih</th>
+            <th class="small py-1">Lama <i class="material-icons" style="font-size:10px">arrow_forward</i> Baru</th>
+            <th class="small py-1">Selisih</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-detail-history-so"></tbody>
+      </table>
     </div>
   </div>
 </div>
