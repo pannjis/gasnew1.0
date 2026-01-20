@@ -7084,18 +7084,12 @@ function reviewDraft() {
 }
 
 // 6. Eksekusi Simpan ke Database
-// 6. Eksekusi Simpan ke Database (UPDATE REALTIME)
-// [UPDATE DI JAVASCRIPT.HTML]
 function prosesSimpanSO() {
-    // 1. Validasi
-    if (Object.keys(draftBuffer).length === 0) {
-        return myAlert('Peringatan', 'Belum ada produk yang diinput!', 'warning');
-    }
+    if (Object.keys(draftBuffer).length === 0) return myAlert('Peringatan', 'Belum ada produk!', 'warning');
 
-    // 2. Konfirmasi
     Swal.fire({
         title: 'Simpan Data Opname?',
-        text: "Stok produk akan diperbarui sesuai input fisik!",
+        text: "Stok akan diperbarui sesuai input fisik!",
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Ya, Simpan!',
@@ -7103,39 +7097,39 @@ function prosesSimpanSO() {
     }).then((result) => {
         if (result.isConfirmed) {
             
-            // Tutup Modal Review (jika terbuka)
+            // Tutup Modal
             const modalEl = document.getElementById('modalReviewOpname');
             const modalInstance = bootstrap.Modal.getInstance(modalEl);
-            if (modalInstance) modalInstance.hide(); // Tutup aman
+            if (modalInstance) modalInstance.hide(); 
+            else new bootstrap.Modal(modalEl).hide();
             
-            loading(true); // Nyalakan loading
+            loading(true); 
             const payload = Object.values(draftBuffer);
 
-            // 3. Kirim ke Backend
             google.script.run
                 .withSuccessHandler(function(response) {
-                    loading(false); // Matikan loading
-                    
-                    // Parse respon JSON dari CODE.GS
+                    loading(false);
                     let res;
                     try { res = JSON.parse(response); } catch(e) { res = { status: 'error', message: response }; }
 
                     if (res.status === 'success') {
-                        // A. Notifikasi Sukses
                         myAlert('Sukses', res.message, 'success');
 
-                        // B. Reset Halaman Input (Bersihkan Draft)
+                        // 1. Bersihkan Input
                         draftBuffer = {};
-                        renderTabelDraftOpname(); // Tabel jadi kosong
+                        renderTabelDraftOpname();
                         document.getElementById('badge-draft').classList.add('d-none');
-                        
-                        // C. Refresh Data Produk Global (Silent)
-                        loadProduk();
+                        loadProduk(); // Refresh data global
 
-                        // D. [LOGIKA BARU] Pindah Tab & Buka Detail
+                        // 2. [SATUKAN JALUR] Langsung Panggil Fungsi Detail Riwayat
                         if (res.id) {
-                            switchTabOpname('riwayat'); // Pindah ke tab Riwayat
-                            lihatDetailSO(res.id);      // Buka detail ID tersebut
+                            // Pindah Tab secara visual ke "Riwayat"
+                            switchTabOpname('riwayat');
+                            
+                            // Panggil fungsi yang SAMA PERSIS dengan klik manual
+                            lihatDetailSO(res.id); 
+                        } else {
+                            switchTabOpname('riwayat');
                         }
 
                     } else {
@@ -7150,7 +7144,6 @@ function prosesSimpanSO() {
         }
     });
 }
-
 // [TAMBAH/PASTIKAN ADA DI JAVASCRIPT.HTML]
 
 // 1. Request Data Detail ke Server
@@ -7175,48 +7168,64 @@ function lihatDetailSO(idOpname) {
 
 // 2. Render Tampilan Detail
 function tampilkanHalamanDetailSO(id, dataItems) {
-    // Tampilkan Halaman Detail, Sembunyikan List Riwayat
+    // 1. Munculkan Halaman Detail
     document.getElementById('tab-riwayat-opname').classList.add('d-none');
     document.getElementById('page-detail-history-so').classList.remove('d-none');
     
-    // Set Header
+    // 2. Set Info ID
     document.getElementById('info-id-so').innerText = 'ID Transaksi: ' + id;
-    
-    // Render Tabel
+
+    // 3. [FIX] TIMPA HEADER TABEL SUPAYA RAPI & SINKRON (5 Kolom)
+    const thead = document.querySelector('#tabel-detail-so thead');
+    if(thead) {
+        thead.innerHTML = `
+            <tr class="bg-light">
+                <th>Produk</th>
+                <th class="text-center">Awal (Sistem)</th>
+                <th class="text-center">Akhir (Fisik)</th>
+                <th class="text-center">Selisih</th>
+                <th>Keterangan</th>
+            </tr>
+        `;
+    }
+
+    // 4. Render Isi Tabel
     const tbody = document.getElementById('tbody-detail-history-so');
     tbody.innerHTML = '';
     
     let totalPlus = 0, totalMinus = 0;
 
     dataItems.forEach(item => {
-        // Hitung Selisih
-        let selisihIsi = item.isi_baru - item.isi_lama;
+        let awal = Number(item.isi_lama) || 0;
+        let akhir = Number(item.isi_baru) || 0;
+        let selisih = akhir - awal;
         
-        // Logika Badge Warna
         let badge = '';
-        if(selisihIsi === 0) badge = '<span class="badge bg-light text-muted border">Sama</span>';
-        else if(selisihIsi > 0) {
-            badge = `<span class="badge bg-success">+${selisihIsi}</span>`;
-            totalPlus += selisihIsi;
+        if(selisih === 0) badge = '<span class="badge bg-light text-muted border">0</span>';
+        else if(selisih > 0) {
+            badge = `<span class="badge bg-success">+${selisih}</span>`;
+            totalPlus += selisih;
         } else {
-            badge = `<span class="badge bg-danger">${selisihIsi}</span>`;
-            totalMinus += Math.abs(selisihIsi);
+            badge = `<span class="badge bg-danger">${selisih}</span>`;
+            totalMinus += Math.abs(selisih);
         }
 
+        // Pastikan urutan kolom SAMA dengan header di atas
         tbody.innerHTML += `
             <tr>
                 <td class="fw-bold">${item.nama}</td>
-                <td class="text-center">${item.isi_lama}</td>
-                <td class="text-center fw-bold">${item.isi_baru}</td>
+                <td class="text-center">${awal}</td>
+                <td class="text-center fw-bold">${akhir}</td>
                 <td class="text-center">${badge}</td>
-                <td class="text-muted small fst-italic">${item.keterangan || '-'}</td>
+                <td class="text-muted small">${item.keterangan || '-'}</td>
             </tr>
         `;
     });
 
-    // Update Ringkasan Dashboard di atas tabel
+    // 5. Update Kartu Statistik
     document.getElementById('hist-so-plus').innerText = totalPlus + " Pcs";
     document.getElementById('hist-so-minus').innerText = totalMinus + " Pcs";
+    document.getElementById('hist-so-rugi').innerText = "-"; 
 }
 
 // ======================= BAGIAN RIWAYAT =======================
