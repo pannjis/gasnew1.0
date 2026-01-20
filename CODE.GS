@@ -1906,12 +1906,12 @@ function simpanStokOpnameBulk(dataDraft) {
   
   const dataProduk = sheetProduk.getDataRange().getValues();
   const user = Session.getActiveUser().getEmail() || 'Admin';
-  const idSO = 'SO-' + Date.now(); // ID Transaksi
+  const idSO = 'SO-' + Date.now(); // ID Transaksi Dibuat Disini
   const tanggal = new Date();
   
   let detailHistory = [];
 
-  // 1. Update Stok Produk & Catat History Item
+  // Update Stok & Catat Log
   dataDraft.forEach(item => {
     for (let i = 1; i < dataProduk.length; i++) {
       if (String(dataProduk[i][0]) === String(item.id)) {
@@ -1919,7 +1919,6 @@ function simpanStokOpnameBulk(dataDraft) {
         let stokIsiLama = dataProduk[i][4];
         let stokKosongLama = dataProduk[i][5];
 
-        // Update Cell Stok Isi & Kosong
         sheetProduk.getRange(i + 1, 5).setValue(Number(item.fisikIsi));
         sheetProduk.getRange(i + 1, 6).setValue(Number(item.fisikKosong));
 
@@ -1936,40 +1935,35 @@ function simpanStokOpnameBulk(dataDraft) {
     }
   });
 
-  // 2. Simpan ke RIWAYAT_SO
+  // Simpan ke Riwayat
   if(sheetRiwayat) {
     sheetRiwayat.appendRow([
       idSO,
       tanggal,
       user,
       dataDraft.length,
-      JSON.stringify(detailHistory) // Simpan detail items dalam JSON string
+      JSON.stringify(detailHistory)
     ]);
   }
 
   catatLog("STOK_OPNAME", `Bulk Update ${dataDraft.length} item. ID: ${idSO}`);
 
-  // [PENTING] Return JSON String agar Frontend bisa baca ID-nya
+  // [KUNCI UTAMA] Return Object JSON berisi ID
   return JSON.stringify({
       status: 'success',
-      id: idSO,
+      id: idSO, 
       message: 'Data Stok Opname Berhasil Disimpan!'
   });
 }
 
-// [TAMBAH BARU DI CODE.GS]
+// [PASTIKAN FUNGSI INI JUGA ADA DI PALING BAWAH CODE.GS]
 function getDetailOpname(idOpname) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("RIWAYAT_SO");
   if(!sheet) return "[]";
-
   const data = sheet.getDataRange().getValues();
   
-  // Cari baris berdasarkan ID_SO (Kolom A / Index 0)
   for(let i=1; i<data.length; i++) {
-     if(String(data[i][0]) === String(idOpname)) {
-        // Kolom E (Index 4) berisi JSON string detail barang
-        return data[i][4]; 
-     }
+     if(String(data[i][0]) === String(idOpname)) return data[i][4]; 
   }
   return "[]";
 }
