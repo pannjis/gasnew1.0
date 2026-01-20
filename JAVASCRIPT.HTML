@@ -335,10 +335,12 @@ function showPage(pageId) {
         if(tabLaba) tabLaba.classList.add('show', 'active');
         if(btnLaba) btnLaba.classList.add('active');
 
-        if(pageId === 'stok-opname') {
-        // Reset Tab ke Input saat menu diklik
-        switchTabOpname('input');
+        if (pageId === 'page-stok-opname' || pageId === 'stok-opname') {
+        // Cek apakah fungsi switchTabOpname ada sebelum dipanggil
+        if (typeof switchTabOpname === 'function') {
+            switchTabOpname('input'); 
         }
+    }
 
         // 4. Load Data Laporan
         const elStart = document.getElementById('lap-start');
@@ -5414,6 +5416,7 @@ function cetakSlipPiutang(idTrx, pelanggan, total, jatuhTempo, mode) {
 }
 
 // [UPDATE PERBAIKAN] Laporan PDF dengan Gambar Aman (Anti Crash)
+// [UPDATE PERBAIKAN] Laporan PDF dengan Gambar Aman & Smart Column Removal
 function printLaporanPDF(tableId, judulLaporan) {
     const table = document.getElementById(tableId);
     
@@ -5421,29 +5424,23 @@ function printLaporanPDF(tableId, judulLaporan) {
     const tglFile = new Date().toISOString().slice(0,10);
     const fileName = judulLaporan.replace(/\s+/g, '_') + '_' + tglFile;
 
-    // 2. Ambil Data Perusahaan
+    // 2. Ambil Data Perusahaan (Sama seperti sebelumnya)
     const namaPT = globalCompanyProfile.nama_perusahaan || 'NAMA PERUSAHAAN';
     const alamatPT = globalCompanyProfile.alamat || '-';
     const noPT = globalCompanyProfile.no_perusahaan || '-';
     
-    // --- [LOGIKA GAMBAR DIPERBAIKI DISINI] ---
-    let logoId = null;      // <--- PENTING: Wajib dideklarasikan di sini (di luar IF)
+    let logoId = null;
     let htmlLogo = '';
     
-    // Cek apakah ada logo tersimpan
     if (globalCompanyProfile.logo_perusahaan) {
-        // Coba cari ID dari URL (format: id=...)
         const match = globalCompanyProfile.logo_perusahaan.match(/id=([^&]+)/);
         if (match) {
-            logoId = match[1]; // <--- Isi variabel logoId yang sudah dibuat di atas
-            
-            // Pasang Placeholder (Penanda) di HTML
+            logoId = match[1];
             htmlLogo = `<img src="[[LOGO_IMAGE_PLACEHOLDER]]" style="height: 80px; width: auto; margin-right: 20px;">`;
         }
     }
-    // ------------------------------------------
 
-    // 3. Header Laporan
+    // 3. Header Laporan (Sama seperti sebelumnya)
     const headerHtml = `
         <div style="display: flex; align-items: center; justify-content: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px;">
             ${htmlLogo}
@@ -5459,17 +5456,32 @@ function printLaporanPDF(tableId, judulLaporan) {
         </div>
     `;
 
-    // 4. Clone Tabel & Bersihkan Kolom Aksi
+    // 4. Clone Tabel & Bersihkan Kolom Aksi (LOGIKA DIPERBAIKI DISINI)
     let tableClone = table.cloneNode(true);
+    
+    // Cek Header Terakhir
     const ths = tableClone.querySelectorAll('th');
-    if(ths.length > 0) ths[ths.length - 1].remove(); 
-    const rows = tableClone.querySelectorAll('tr');
-    rows.forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if(cells.length > 0) cells[cells.length - 1].remove();
-    });
+    let removeLastCol = false;
 
-    // 5. CSS Style
+    if (ths.length > 0) {
+        const lastHeader = ths[ths.length - 1].innerText.trim().toLowerCase();
+        // HANYA hapus jika header adalah "Aksi", "Action", atau kosong (tombol)
+        if (lastHeader === 'aksi' || lastHeader === 'action' || lastHeader === '') {
+            removeLastCol = true;
+            ths[ths.length - 1].remove(); 
+        }
+    }
+
+    // Jika Header terakhir terdeteksi sebagai tombol, baru hapus isi barisnya
+    if (removeLastCol) {
+        const rows = tableClone.querySelectorAll('tr');
+        rows.forEach(row => {
+            const cells = row.querySelectorAll('td');
+            if(cells.length > 0) cells[cells.length - 1].remove();
+        });
+    }
+
+    // 5. CSS Style (Sama seperti sebelumnya)
     const cssStyle = `
         <style>
             body { font-family: sans-serif; padding: 20px; color: #000; }
@@ -5481,10 +5493,8 @@ function printLaporanPDF(tableId, judulLaporan) {
         </style>
     `;
 
-    // 6. Gabungkan HTML
     const fullHtml = `<html><head>${cssStyle}</head><body>${headerHtml}${tableClone.outerHTML}</body></html>`;
 
-    // 7. KIRIM KE SERVER
     loading(true);
     google.script.run
         .withSuccessHandler(function(base64) {
@@ -5495,8 +5505,7 @@ function printLaporanPDF(tableId, judulLaporan) {
             loading(false);
             myAlert('Gagal', 'Gagal generate PDF: ' + err.message, 'error');
         })
-        // Pastikan variabel logoId ini terbaca (tidak merah/error)
-        .generatePdfFromHtml(fullHtml, fileName, logoId); 
+        .generatePdfFromHtml(fullHtml, fileName, logoId);
 }
 
 // --- FUNGSI CETAK NOTA KEUANGAN (A5 LANDSCAPE + 3 TANDA TANGAN) ---
@@ -6890,22 +6899,38 @@ function tampilkanLogAktivitas() {
 // ==========================================
 // 1. Fungsi Ganti Tab (Input <-> Riwayat)
 function switchTabOpname(tab) {
-  // Atur kelas tombol active
+  // 1. TAMBAHAN PENTING: Reset tampilan Detail & Munculkan Menu Tab lagi
+  // (Wajib ada biar tidak blank saat balik dari detail)
+  const pageDetail = document.getElementById('page-detail-history-so');
+  if (pageDetail) pageDetail.classList.add('d-none'); // Tutup halaman detail
+  
+  const navTab = document.getElementById('tabOpname');
+  if (navTab) navTab.classList.remove('d-none'); // Munculkan lagi tombol tabnya!
+
+  // -----------------------------------------------------------------------
+
+  // Atur kelas tombol active (Kode asli Anda)
   document.querySelectorAll('#tabOpname .nav-link').forEach(btn => btn.classList.remove('active'));
   
   if (tab === 'input') {
     document.getElementById('tab-input-opname').classList.remove('d-none');
     document.getElementById('tab-riwayat-opname').classList.add('d-none');
-    document.querySelector('#tabOpname li:nth-child(1) button').classList.add('active');
+    // Pastikan selector ini benar (sesuai urutan li di HTML Anda)
+    const btnInput = document.querySelector('#tabOpname li:nth-child(1) button'); 
+    if(btnInput) btnInput.classList.add('active');
     
     // Load data input hanya jika belum ada (atau mau refresh manual)
-    if(document.querySelector('#tabel-input-opname tbody').children.length === 0) {
+    const tbodyInput = document.querySelector('#tabel-input-opname tbody');
+    if(tbodyInput && tbodyInput.children.length === 0) {
         loadDataInputOpname();
     }
   } else {
     document.getElementById('tab-input-opname').classList.add('d-none');
     document.getElementById('tab-riwayat-opname').classList.remove('d-none');
-    document.querySelector('#tabOpname li:nth-child(2) button').classList.add('active');
+    // Pastikan selector ini benar
+    const btnRiwayat = document.querySelector('#tabOpname li:nth-child(2) button');
+    if(btnRiwayat) btnRiwayat.classList.add('active');
+    
     loadRiwayatSO();
   }
 }
