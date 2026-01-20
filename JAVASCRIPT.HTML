@@ -7152,18 +7152,15 @@ function lihatDetailSO(idOpname) {
     google.script.run
         .withSuccessHandler(function(jsonString) {
             loading(false);
-            try {
-                const dataItems = JSON.parse(jsonString);
-                tampilkanHalamanDetailSO(idOpname, dataItems);
-            } catch (e) {
-                myAlert('Error', 'Gagal memproses data detail.', 'error');
-            }
+            // PERBAIKAN: Langsung panggil viewDetailSO agar tampilan konsisten (sama persis menu Riwayat)
+            // Kita encodeURIComponent karena viewDetailSO melakukan decode di dalamnya
+            viewDetailSO(idOpname, encodeURIComponent(jsonString));
         })
         .withFailureHandler(function(err){
             loading(false);
             myAlert('Error', err.message, 'error');
         })
-        .getDetailOpname(idOpname); // Panggil fungsi baru di CODE.GS tadi
+        .getDetailOpname(idOpname);
 }
 
 // 2. Render Tampilan Detail
@@ -7265,6 +7262,7 @@ function loadRiwayatSO() {
 }
 
 // --- 1. FUNGSI VIEW DETAIL (Menggantikan Modal Popup) ---
+// --- 1. FUNGSI VIEW DETAIL (REVISI: 2 NILAI SELISIH) ---
 function viewDetailSO(idSo, jsonString) {
   // Decode data JSON riwayat
   let data = [];
@@ -7281,23 +7279,27 @@ function viewDetailSO(idSo, jsonString) {
 
   let totalPlus = 0;
   let totalMinus = 0;
-  let totalNilaiSelisih = 0;
+  let totalSelisihModal = 0; // Total Rupiah berdasarkan Harga Beli
+  let totalSelisihJual = 0;  // Total Rupiah berdasarkan Harga Jual
 
   data.forEach(item => {
-    // 1. Cari Harga Modal dari Master Data (globalProdukList)
-    // Format globalProdukList: [0]ID, [1]Nama, [3]BeliIsi, [9]BeliTabung
+    // 1. Cari Data Produk Master untuk ambil harga
     let produkMaster = globalProdukList.find(p => p[1] === item.nama);
     
-    let hppIsi = 0;
-    let hppTabung = 0;
+    let hppIsi = 0, hppTabung = 0;
+    let jualIsi = 0, jualTabung = 0;
 
     if (produkMaster) {
-        hppIsi = Number(produkMaster[3]) || 0;    // Harga Beli Isi
-        hppTabung = Number(produkMaster[9]) || 0; // Harga Beli Tabung
+        // Harga Beli (Modal) - Index 3 & 9
+        hppIsi = Number(produkMaster[3]) || 0;
+        hppTabung = Number(produkMaster[9]) || 0;
+        
+        // Harga Jual - Index 2 & 10
+        jualIsi = Number(produkMaster[2]) || 0;
+        jualTabung = Number(produkMaster[10]) || 0;
     }
 
     // 2. Hitung Selisih Fisik
-    // item.isi_lama, item.isi_baru, dst berasal dari JSON riwayat
     const selisihIsi = Number(item.isi_baru) - Number(item.isi_lama);
     const selisihKsg = Number(item.kosong_baru) - Number(item.kosong_lama);
 
@@ -7307,18 +7309,25 @@ function viewDetailSO(idSo, jsonString) {
     if (selisihKsg > 0) totalPlus += selisihKsg;
     if (selisihKsg < 0) totalMinus += Math.abs(selisihKsg);
 
-    // 4. Hitung Nilai Rupiah (Akumulasi Kerugian/Keuntungan)
-    let nilaiRow = (selisihIsi * hppIsi) + (selisihKsg * hppTabung);
-    totalNilaiSelisih += nilaiRow;
+    // 4. Hitung Nilai Rupiah (Dua Versi)
+    // a. Berdasarkan Modal (Beli)
+    let nilaiModal = (selisihIsi * hppIsi) + (selisihKsg * hppTabung);
+    totalSelisihModal += nilaiModal;
 
-    // Helper formatter tampilan
+    // b. Berdasarkan Harga Jual
+    let nilaiJual = (selisihIsi * jualIsi) + (selisihKsg * jualTabung);
+    totalSelisihJual += nilaiJual;
+
+    // Helper formatter tampilan badge selisih fisik
     const fmtDiff = (val) => {
         if(val > 0) return `<span class="badge bg-success">+${val}</span>`;
         if(val < 0) return `<span class="badge bg-danger">${val}</span>`;
         return `<span class="text-muted">-</span>`;
     };
     
-    let colorMoney = nilaiRow < 0 ? 'text-danger fw-bold' : (nilaiRow > 0 ? 'text-success fw-bold' : 'text-dark');
+    // Warna Text Uang (Merah jika minus, Hijau jika plus)
+    let colorModal = nilaiModal < 0 ? 'text-danger' : (nilaiModal > 0 ? 'text-success' : 'text-muted');
+    let colorJual = nilaiJual < 0 ? 'text-danger' : (nilaiJual > 0 ? 'text-success' : 'text-muted');
 
     tbody.innerHTML += `
       <tr>
@@ -7334,26 +7343,31 @@ function viewDetailSO(idSo, jsonString) {
         </td>
         <td class="text-center">${fmtDiff(selisihKsg)}</td>
 
-        <td class="text-end ${colorMoney}">${rupiah(nilaiRow)}</td>
+        <td class="text-end">
+            <div class="${colorModal} fw-bold" style="font-size:11px;">M: ${rupiah(nilaiModal)}</div>
+            <div class="${colorJual} fw-bold" style="font-size:11px;">J: ${rupiah(nilaiJual)}</div>
+        </td>
         <td><small class="text-muted fst-italic">${item.keterangan || '-'}</small></td>
       </tr>
     `;
   });
 
-  // Update Kartu Statistik
+  // 5. Update Kartu Statistik di Atas
   document.getElementById('hist-so-plus').innerText = totalPlus + " Pcs";
   document.getElementById('hist-so-minus').innerText = totalMinus + " Pcs";
   
-  // Jika minus, berarti Rugi. Jika plus, berarti Untung (Surplus Aset)
-  let labelRugi = totalNilaiSelisih < 0 ? `-${rupiah(Math.abs(totalNilaiSelisih))}` : `+${rupiah(totalNilaiSelisih)}`;
-  let warnaRugi = totalNilaiSelisih < 0 ? 'text-white' : 'text-white'; // Tetap putih karena background merah
-  document.getElementById('hist-so-rugi').innerText = labelRugi;
+  // Format Label Total (Jika minus kasih tanda negatif di depan Rupiah)
+  const fmtMoney = (val) => val < 0 ? `-${rupiah(Math.abs(val))}` : `+${rupiah(val)}`;
+
+  // Tampilkan 2 Baris Total (Modal & Jual)
+  document.getElementById('hist-so-rugi').innerHTML = `
+    <div style="font-size:12px; margin-bottom:2px;">Modal: ${fmtMoney(totalSelisihModal)}</div>
+    <div style="font-size:12px; color:#ffeb3b;">Jual: ${fmtMoney(totalSelisihJual)}</div>
+  `;
 
   // SWITCH PAGE: Sembunyikan List Riwayat, Tampilkan Detail
-  document.getElementById('tab-riwayat-opname').classList.add('d-none'); // Sembunyikan tab list
-  document.getElementById('page-detail-history-so').classList.remove('d-none'); // Munculkan detail page
-  
-  // Sembunyikan tab navigasi stok opname sementara agar fokus
+  document.getElementById('tab-riwayat-opname').classList.add('d-none'); 
+  document.getElementById('page-detail-history-so').classList.remove('d-none'); 
   document.getElementById('tabOpname').classList.add('d-none');
 }
 
