@@ -629,43 +629,53 @@
             <hr class="text-muted opacity-25 my-4">
 
             <h6 class="text-uppercase text-muted fw-bold mb-3 small" style="letter-spacing: 1px;">Harga (Isi Ulang / Refill)</h6>
-            <div class="row g-3 mb-4">
-              <div class="col-md-6">
-                  <label class="form-label small fw-bold text-primary">Harga Jual Refill</label>
-                  <div class="input-group">
-                      <span class="input-group-text bg-white border fw-bold text-primary">Rp</span>
-                      <input id="edit-prod-jual" type="text" class="form-control border fw-bold text-primary" onkeyup="formatRupiahInput(this)">
-                  </div>
-              </div>
-              <div class="col-md-6">
-                  <label class="form-label small fw-bold text-muted">Harga Modal Refill (HPP)</label>
-                  <div class="input-group">
-                      <span class="input-group-text bg-white border fw-bold text-primary">Rp</span>
-                      <input id="edit-prod-beli" type="text" class="form-control border" onkeyup="formatRupiahInput(this)">
-                  </div>
-              </div>
-            </div>
+            <div class="mb-3 border rounded p-2 bg-light">
+    <label class="small fw-bold mb-2 text-primary">Harga Jual Refill (Isi Ulang)</label>
+    <div class="row g-2 mb-2">
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 1 (Umum)</label>
+            <input id="edit-prod-jual" type="text" class="form-control form-control-sm fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 2 (Toko)</label>
+            <input id="edit-prod-jual-2" type="text" class="form-control form-control-sm border-primary" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 3 (VIP)</label>
+            <input id="edit-prod-jual-3" type="text" class="form-control form-control-sm border-danger" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+             <label class="small text-muted" style="font-size:10px">Harga Modal (Beli)</label>
+             <input id="edit-prod-beli" type="text" class="form-control form-control-sm" placeholder="HPP Refill" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+</div>
 
-            <h6 class="text-uppercase text-muted fw-bold mb-3 small" style="letter-spacing: 1px;">Harga (Wadah Kosong)</h6>
-            <div class="p-3 bg-light rounded border mb-4">
-                <div class="row g-3">
-                  <div class="col-md-6">
-                      <label class="form-label small fw-bold text-dark">Harga Jual</label>
-                      <div class="input-group">
-                          <span class="input-group-text bg-white border fw-bold text-dark">Rp</span>
-                          <input id="edit-prod-jual-tabung" type="text" class="form-control border fw-bold text-dark" onkeyup="formatRupiahInput(this)" placeholder="Cth: 198.000">
-                      </div>
-                      <div class="form-text small mt-1" style="font-size: 11px;">Ditambahkan saat transaksi "Tabung Baru".</div>
-                  </div>
-                  <div class="col-md-6">
-                      <label class="form-label small fw-bold text-muted">Harga Modal (HPP)</label>
-                      <div class="input-group">
-                          <span class="input-group-text bg-white border-0 text-muted">Rp</span>
-                          <input id="edit-prod-beli-tabung" type="text" class="form-control bg-white border-0" onkeyup="formatRupiahInput(this)" placeholder="Cth: 189.000">
-                      </div>
-                  </div>
-                </div>
-            </div>
+<div class="mb-3 border rounded p-2 bg-white">
+    <label class="small fw-bold mb-2 text-dark">Harga Jual Tabung Kosong</label>
+    <div class="row g-2 mb-2">
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 1 (Umum)</label>
+            <input id="edit-prod-jual-tabung" type="text" class="form-control form-control-sm fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 2 (Toko)</label>
+            <input id="edit-prod-jual-tabung-2" type="text" class="form-control form-control-sm border-primary" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 3 (VIP)</label>
+            <input id="edit-prod-jual-tabung-3" type="text" class="form-control form-control-sm border-danger" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+             <label class="small text-muted" style="font-size:10px">Harga Modal (Beli)</label>
+             <input id="edit-prod-beli-tabung" type="text" class="form-control form-control-sm" placeholder="HPP Tabung" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+</div>
 
             <div class="alert alert-danger border-0 bg-danger-subtle mb-4">
               <div class="d-flex align-items-center mb-3 text-danger">
@@ -1409,12 +1419,13 @@
         <div class="modal-dialog modal-sm modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header border-0 pb-0">
-              <h6 class="fw-bold">Tambah Akun Keuangan</h6>
-              <button class="btn-close" data-bs-dismiss="modal"></button>
+              <h6 class="fw-bold" id="label-modal-akun">Tambah Akun Keuangan</h6> <button class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+              
+              <input type="hidden" id="edit-id-akun"> 
               <div class="mb-2">
-                  <label class="small fw-bold">Nama Akun</label>
+                <label class="small fw-bold">Nama Akun</label>
                   <input id="input-akun-nama" class="form-control" placeholder="Cth: Bank BCA">
               </div>
               
@@ -1434,7 +1445,7 @@
               </div>
               <div class="mb-2">
                   <label class="small fw-bold">Saldo Awal (Rp)</label>
-                  <input type="number" id="input-akun-saldo" class="form-control" placeholder="0" value="0">
+                  <input type="text" id="input-akun-saldo" class="form-control" placeholder="0" value="0" onkeyup="formatRupiahInput(this)">
               </div>
             </div>
             <div class="modal-footer border-0 pt-0">
@@ -1538,34 +1549,53 @@
                     <small class="text-muted d-block mt-2" style="font-size:10px">*Gambar akan disimpan di Google Drive Anda.</small>
                 </div>
 
-                <div class="mb-3">
-                    <label class="small fw-bold mb-2 text-primary">Harga Refill (Isi Ulang)</label>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="small text-muted mb-1" style="font-size: 10px;">Harga Jual</label>
-                            <input id="prod-jual" type="text" class="form-control fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
-                        </div>
-                        <div class="col-6">
-                            <label class="small text-muted mb-1" style="font-size: 10px;">Harga Beli (Modal)</label>
-                            <input id="prod-beli" type="text" class="form-control" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
-                        </div>
-                    </div>
-                </div>
+<div class="mb-3 border rounded p-2 bg-light">
+    <label class="small fw-bold mb-2 text-primary">Harga Jual Refill (Isi Ulang)</label>
+    <div class="row g-2 mb-2">
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 1 (Umum)</label>
+            <input id="prod-jual" type="text" class="form-control form-control-sm fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 2 (Toko)</label>
+            <input id="prod-jual-2" type="text" class="form-control form-control-sm border-primary" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 3 (VIP)</label>
+            <input id="prod-jual-3" type="text" class="form-control form-control-sm border-danger" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+             <label class="small text-muted" style="font-size:10px">Harga Modal (Beli)</label>
+             <input id="prod-beli" type="text" class="form-control form-control-sm" placeholder="HPP Refill" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+</div>
 
-                <div class="p-3 rounded border mb-4" style="background-color: #f8f9fa;">
-                    <label class="small fw-bold mb-2 text-dark">Harga Kosongan (Opsional)</label>
-                    <div class="row g-3">
-                        <div class="col-6">
-                            <label class="small text-muted mb-1" style="font-size: 10px;">Jual Tabung</label>
-                            <input id="prod-jual-tabung" type="text" class="form-control fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
-                        </div>
-                        <div class="col-6">
-                            <label class="small text-muted mb-1" style="font-size: 10px;">Modal Tabung</label>
-                            <input id="prod-beli-tabung" type="text" class="form-control" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
-                        </div>
-                    </div>
-                    <small class="text-muted d-block mt-2" style="font-size:10px">*Isi jika produk ini bisa dijual paket tabung baru.</small>
-                </div>
+<div class="mb-3 border rounded p-2 bg-white">
+    <label class="small fw-bold mb-2 text-dark">Harga Jual Tabung Kosong</label>
+    <div class="row g-2 mb-2">
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 1 (Umum)</label>
+            <input id="prod-jual-tabung" type="text" class="form-control form-control-sm fw-bold" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 2 (Toko)</label>
+            <input id="prod-jual-tabung-2" type="text" class="form-control form-control-sm border-primary" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+        <div class="col-4">
+            <label class="small text-muted" style="font-size:10px">Level 3 (VIP)</label>
+            <input id="prod-jual-tabung-3" type="text" class="form-control form-control-sm border-danger" placeholder="Rp 0" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-12">
+             <label class="small text-muted" style="font-size:10px">Harga Modal (Beli)</label>
+             <input id="prod-beli-tabung" type="text" class="form-control form-control-sm" placeholder="HPP Tabung" onkeyup="formatRupiahInput(this)">
+        </div>
+    </div>
+</div>
 
                 <div class="row g-3">
                     <div class="col-6">
@@ -1984,6 +2014,17 @@
       </div>
 
       <div class="modal-body p-4 bg-light">
+
+        <div class="d-flex justify-content-center gap-2 mb-3 mt-1">
+  <input type="radio" class="btn-check" name="pilihLevel" id="btn-lvl-1" value="1" autocomplete="off" checked onchange="hitungHargaLevel()">
+  <label class="btn btn-outline-dark btn-sm rounded-pill px-3" for="btn-lvl-1">Level 1</label>
+
+  <input type="radio" class="btn-check" name="pilihLevel" id="btn-lvl-2" value="2" autocomplete="off" onchange="hitungHargaLevel()">
+  <label class="btn btn-outline-primary btn-sm rounded-pill px-3" for="btn-lvl-2">Level 2</label>
+
+  <input type="radio" class="btn-check" name="pilihLevel" id="btn-lvl-3" value="3" autocomplete="off" onchange="hitungHargaLevel()">
+  <label class="btn btn-outline-danger btn-sm rounded-pill px-3" for="btn-lvl-3">Level 3</label>
+</div>
         
         <div id="box-toggle-tabung" class="d-none mb-3 p-3 rounded-3 border d-flex justify-content-between align-items-center bg-white shadow-sm transition-all">
             <div style="line-height: 1.2;">
