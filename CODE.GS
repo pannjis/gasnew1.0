@@ -18,7 +18,7 @@ function setupDatabase() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheets = [
     {name: 'USERS', header: ['Username', 'Password', 'Role', 'Nama']},
-    {name: 'PRODUK', header: ['ID', 'Nama_Produk', 'Harga_Jual', 'Harga_Beli', 'Stok_Isi', 'Stok_Kosong', 'SKU', 'Kode', 'Link_Gambar', 'Harga_Beli_Tabung', 'Harga_Jual_Tabung']},
+    {name: 'PRODUK', header: ['ID', 'Nama_Produk', 'Harga_Jual', 'Harga_Beli', 'Stok_Isi', 'Stok_Kosong', 'SKU', 'Kode', 'Link_Gambar', 'Harga_Beli_Tabung', 'Harga_Jual_Tabung', 'Harga_Jual_Refill_2', 'Harga_Jual_Refill_3', 'Harga_Jual_Tabung_2', 'Harga_Jual_Tabung_3']},
     {name: 'PELANGGAN', header: ['ID', 'Nama', 'Nama_Perusahan', 'NoHP', 'Alamat']},
     {name: 'SUPPLIER', header: ['ID', 'Nama_Supplier', 'NoHP', 'Alamat']},
     {name: 'TRANSAKSI', header: ['ID_Trans', 'Waktu', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Tipe', 'Kasir', 'Metode_Bayar', 'Jatuh_Tempo', 'Status']},
@@ -305,6 +305,7 @@ function tambahProduk(form) {
   }
 
   // Simpan data
+// Simpan data (UPDATE KOLOM BARU)
   sheet.appendRow([
     'P-' + Date.now(), 
     form.nama, 
@@ -316,7 +317,12 @@ function tambahProduk(form) {
     form.kode,     
     imageUrl,
     form.hargaBeliTabung || 0, 
-    form.hargaJualTabung || 0  
+    form.hargaJualTabung || 0,
+    // --- 4 KOLOM BARU ---
+    form.hargaJualRefill2 || 0, // Index 11
+    form.hargaJualRefill3 || 0, // Index 12
+    form.hargaJualTabung2 || 0, // Index 13
+    form.hargaJualTabung3 || 0  // Index 14
   ]);
 
   // [FIX] formObject -> form
@@ -370,6 +376,12 @@ function updateProduk(form) {
    
   sheet.getRange(rowTarget, 10).setValue(form.hargaBeliTabung || 0); 
   sheet.getRange(rowTarget, 11).setValue(form.hargaJualTabung || 0);
+
+  // --- UPDATE KOLOM BARU ---
+  sheet.getRange(rowTarget, 12).setValue(form.hargaJualRefill2 || 0);
+  sheet.getRange(rowTarget, 13).setValue(form.hargaJualRefill3 || 0);
+  sheet.getRange(rowTarget, 14).setValue(form.hargaJualTabung2 || 0);
+  sheet.getRange(rowTarget, 15).setValue(form.hargaJualTabung3 || 0);
 
   // [FIX] formObject -> form
   catatLog("EDIT_PRODUK", "Mengupdate data produk: " + form.nama);
@@ -958,20 +970,61 @@ function simpanKeuangan(form) {
 
 function simpanAkunBaru(form) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AKUN_KAS');
-  const id = 'ACC-' + Date.now();
-  sheet.appendRow([id, form.nama, "'" + form.norek, form.tipe, form.saldo]); 
+  
+  // --- CEK: APAKAH INI EDIT DATA? (JIKA ADA ID) ---
+  if (form.id && form.id !== "") {
+     const data = sheet.getDataRange().getValues();
+     
+     for(let i=1; i<data.length; i++) {
+        if(data[i][0] == form.id) {
+           // Simpan data lama untuk laporan log yang detail
+           let namaLama = data[i][1];
+           let saldoLama = data[i][4];
+
+           // Lakukan Update Cell
+           sheet.getRange(i+1, 2).setValue(form.nama);
+           sheet.getRange(i+1, 3).setValue("'" + form.norek);
+           sheet.getRange(i+1, 4).setValue(form.tipe);
+           sheet.getRange(i+1, 5).setValue(form.saldo);
+           
+           // [PENTING] CATAT LOG EDIT
+           catatLog("EDIT_AKUN_KAS", `Update Akun: ${namaLama} | Saldo: ${saldoLama} -> ${form.saldo}`);
+           
+           return "Data Akun Berhasil Diupdate!";
+        }
+     }
+  }
+
+  // --- JIKA TIDAK ADA ID, BERARTI TAMBAH BARU ---
+  const newId = 'ACC-' + Date.now();
+  sheet.appendRow([newId, form.nama, "'" + form.norek, form.tipe, form.saldo]); 
+  
+  // [PENTING] CATAT LOG BARU
+  catatLog("TAMBAH_AKUN_KAS", "Menambah Akun Baru: " + form.nama + " | Saldo Awal: " + form.saldo);
+
   return "Akun Berhasil Ditambahkan!";
 }
 
 function hapusAkun(id) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AKUN_KAS');
   const data = sheet.getDataRange().getValues();
+  
   for(let i=1; i<data.length; i++) {
      if(data[i][0] == id) {
+        // 1. Ambil nama akun dulu sebelum dihapus agar log-nya jelas
+        let namaAkun = data[i][1]; 
+        let saldoTerakhir = data[i][4];
+
+        // 2. Hapus Baris
         sheet.deleteRow(i+1);
+        
+        // 3. [PENTING] CATAT KE LOG AKTIVITAS
+        catatLog("HAPUS_AKUN_KAS", "Menghapus Akun: " + namaAkun + " | ID: " + id + " | Saldo Terakhir: " + saldoTerakhir);
+
         return "Akun Dihapus.";
      }
   }
+  return "ID Akun tidak ditemukan.";
 }
 
 function prosesTransferSaldo(form) {
