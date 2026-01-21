@@ -2645,17 +2645,19 @@ document.getElementById('filter-beli-text')?.addEventListener('keyup', function(
 // GANTI FUNGSI viewDetailTrx DENGAN INI
 
 function viewDetailTrx(tipe, index) {
-   // 1. Ambil Data
+   // 1. Ambil Data Transaksi
    const data = tipe === 'JUAL' ? dataJualTemp : dataBeliTemp;
    const trx = data[index];
    
    if(!trx) return myAlert('Error', 'Data transaksi tidak ditemukan', 'error');
 
-   // 2. Isi Modal
+   // [PENTING] Set variable global ini agar bisa dibaca oleh fungsi cetakInvoiceRetur
+   currentReturData = trx; 
+
+   // 2. Isi Info Header Modal
    document.getElementById('det-id').innerText = trx.id;
    document.getElementById('det-pelanggan').innerText = trx.pelanggan;
    
-   // Handle Tanggal agar tidak error
    try {
        document.getElementById('det-waktu').innerText = new Date(trx.waktu).toLocaleString('id-ID');
    } catch(e) {
@@ -2664,41 +2666,68 @@ function viewDetailTrx(tipe, index) {
 
    document.getElementById('det-total').innerText = rupiah(trx.totalBayar);
    
-   // 3. Render Tabel Barang
+   // 3. Render Tabel Barang (Dengan Logika Retur)
    const tb = document.querySelector('#tabel-detail-trx tbody');
    tb.innerHTML = '';
+   
+   let adaBarangRetur = false;
+   let totalRefundHitung = 0;
+
    trx.items.forEach(item => {
+       // DETEKSI RETUR:
+       // Cek apakah item memiliki properti 'qtyRetur' > 0 ATAU status mengandung kata 'Retur'
+       // (Sesuaikan dengan data yang dikirim backend Anda)
+       let qtyRetur = Number(item.qtyRetur) || 0;
+       let isRetur = qtyRetur > 0 || (item.status && item.status.toString().toLowerCase().includes('retur'));
+       
+       // Styling Baris
+       let classRow = '';
+       let infoRetur = '';
+       
+       if (isRetur) {
+           adaBarangRetur = true;
+           classRow = 'table-danger'; // Warna merah muda
+           
+           // Hitung estimasi refund untuk tombol cetak
+           // Harga Satuan = HargaTotal / Qty Awal
+           let hargaSatuan = (item.qty > 0) ? (item.hargaTotal / item.qty) : 0;
+           // Jika qtyRetur tidak tercatat tapi status retur, asumsikan full (fallback), tapi utamakan qtyRetur
+           let qtyRefund = qtyRetur > 0 ? qtyRetur : item.qty; 
+           totalRefundHitung += (qtyRefund * hargaSatuan);
+
+           infoRetur = `<br><span class="badge bg-danger mt-1" style="font-size:9px">DIRETUR: ${qtyRefund} Pcs</span>`;
+       }
+
        tb.innerHTML += `
-        <tr>
-            <td>${item.produk} <br> <small class="text-muted">${item.tipe}</small></td>
-            <td class="text-center">${item.qty}</td>
+        <tr class="${classRow}">
+            <td>
+                <span class="${isRetur ? 'text-danger fw-bold' : ''}">${item.produk}</span> 
+                ${infoRetur}
+                <br> <small class="text-muted">${item.tipe}</small>
+            </td>
+            <td class="text-center">
+                ${item.qty}
+            </td>
             <td class="text-end">${rupiah(item.hargaTotal)}</td>
         </tr>`;
    });
 
-   // 4. SETUP TOMBOL (CETAK & RETUR)
+   // 4. SETUP TOMBOL FOOTER
    const footer = document.querySelector('#modalDetailTrx .modal-footer');
-   
-   // Reset isi footer
    footer.innerHTML = `<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>`;
    
-   // A. Tombol CETAK (Hanya muncul untuk Penjualan)
-if(tipe === 'JUAL') {
+   // A. Tombol CETAK INVOICE (Normal)
+   if(tipe === 'JUAL') {
        const btnCetak = document.createElement('button');
        btnCetak.className = 'btn btn-primary ms-2 fw-bold';
-       btnCetak.innerHTML = '<i class="material-icons align-middle" style="font-size:16px">print</i> CETAK';
-       
+       btnCetak.innerHTML = '<i class="material-icons align-middle" style="font-size:16px">print</i> CETAK STRUK';
        btnCetak.onclick = () => {
-           // Siapkan Data Invoice dari data Riwayat
            const payloadInvoice = {
                pelanggan: trx.pelanggan,
                kasir: trx.kasir || 'Admin',
                metode: trx.metode || 'Tunai', 
                jatuhTempo: trx.jatuhTempo || '',
-               
-               // [PENTING] Tambahkan ini agar diskon terbawa saat cetak ulang
-               diskon: trx.diskonTotal || 0, 
-
+               diskon: trx.diskonTotal || 0,
                items: trx.items.map(i => ({
                    produkNama: i.produk,
                    qty: i.qty,
@@ -2707,14 +2736,33 @@ if(tipe === 'JUAL') {
                    total: i.hargaTotal
                }))
            };
-
            bootstrap.Modal.getInstance(document.getElementById('modalDetailTrx')).hide();
            tampilkanInvoice(payloadInvoice, trx.id);
        };
        footer.appendChild(btnCetak);
    }
 
-   // B. Tombol RETUR
+   // B. Tombol CETAK BUKTI RETUR (Khusus jika ada barang retur)
+   if(adaBarangRetur) {
+       const btnCetakRetur = document.createElement('button');
+       btnCetakRetur.className = 'btn btn-outline-danger ms-2 fw-bold';
+       btnCetakRetur.innerHTML = '<i class="material-icons align-middle" style="font-size:16px">receipt</i> CETAK RETUR';
+       
+       btnCetakRetur.onclick = () => {
+           // Siapkan payload sesuai format yang diminta fungsi cetakInvoiceRetur
+           const payloadRetur = {
+               idTrx: trx.id,
+               alasan: trx.alasanRetur || 'Retur Barang (Cetak Ulang)',
+               items: trx.items // Item sudah mengandung qtyRetur dari database
+           };
+           
+           // Panggil fungsi cetak yang sudah Anda buat
+           cetakInvoiceRetur(payloadRetur, totalRefundHitung);
+       };
+       footer.appendChild(btnCetakRetur);
+   }
+
+   // C. Tombol PROSES RETUR BARU (Agar bisa retur susulan)
    const btnRetur = document.createElement('button');
    btnRetur.className = 'btn btn-danger ms-2';
    btnRetur.innerText = 'RETUR / BATAL';
