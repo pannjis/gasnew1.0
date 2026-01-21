@@ -353,6 +353,11 @@ function showPage(pageId) {
             switchTabOpname('input'); 
         }
     }
+
+    if (pageId === 'pembelian') {
+    loadAkunUntukPembelian(); // [BARU] Load Akun
+    loadDataProdukGlobal();   // [BARU] Load Produk utk Search
+    }
 }
 
 function handleLogin() {
@@ -2104,37 +2109,24 @@ function renderNotifikasi(data) {
 }
 // [UPDATE] Fungsi Update Harga Beli dengan Format Ribuan
 function updateHargaBeli() {
-  const sel = document.getElementById('beli-produk');
-  const qtyInput = document.getElementById('beli-qty');
-  const hargaInput = document.getElementById('beli-harga');
-  const labelSubtotal = document.getElementById('beli-subtotal-label');
+    // 1. Ambil Qty
+    var qtyInput = document.getElementById('beli-qty').value;
+    var qty = parseInt(qtyInput) || 0;
 
-  // 1. Ambil Harga Database (Backup jika kosong)
-  const priceDatabase = sel.options[sel.selectedIndex]?.getAttribute('data-buy') || 0;
+    // 2. Ambil Harga (Langsung dari input text, bukan dari option dropdown lagi)
+    var hargaInput = document.getElementById('beli-harga').value;
+    // Hapus karakter non-angka jika ada format Rp, lalu parse
+    var harga = parseInt(String(hargaInput).replace(/\D/g, '')) || 0;
 
-  // 2. Format Tampilan Input (Hanya Angka & Titik)
-  // Ambil value, buang semua karakter selain angka
-  let rawValue = hargaInput.value.replace(/\D/g, ''); 
-  
-  // Jika kosong, pakai harga database (opsional, atau biarkan 0)
-  if(rawValue === '' && priceDatabase > 0) {
-      rawValue = priceDatabase.toString();
-  }
+    // 3. Hitung Subtotal
+    var subtotal = qty * harga;
 
-  // Format jadi Ribuan (Visual)
-  if(rawValue !== '') {
-      hargaInput.value = Number(rawValue).toLocaleString('id-ID');
-  } else {
-      hargaInput.value = '';
-  }
-
-  // 3. Hitung Subtotal (Pakai Angka Murni)
-  const qty = Number(qtyInput.value);
-  const hargaMurni = Number(rawValue); // Gunakan rawValue yg tanpa titik
-
-  if (labelSubtotal) {
-      labelSubtotal.innerText = rupiah(qty * hargaMurni);
-  }
+    // 4. Tampilkan (Gunakan fungsi rupiah() jika anda punya, atau toLocaleString)
+    // Jika function rupiah() ada: 
+    // document.getElementById('beli-subtotal-label').innerText = rupiah(subtotal);
+    
+    // Jika tidak yakin, pakai ini:
+    document.getElementById('beli-subtotal-label').innerText = "Rp " + subtotal.toLocaleString('id-ID');
 }
 
 // [BARU] Fungsi khusus saat Ganti Produk di Dropdown
@@ -2152,50 +2144,86 @@ function setHargaOtomatis() {
   updateHargaBeli(); 
 }
 
-  function tambahKeKeranjangBeli() {
-      const prod = document.getElementById('beli-produk').value;
-      const qty = Number(document.getElementById('beli-qty').value);
-      const rawHarga = document.getElementById('beli-harga').value.replace(/\./g, '');
-      const harga = Number(rawHarga);
-      const isTukar = document.getElementById('beli-tukar').checked;
-      
-      if(!prod) return myAlert('Error', 'Pilih produk dulu!', 'error');
-      if(qty <= 0) return myAlert('Error', 'Jumlah minimal 1', 'error');
+function tambahKeKeranjangBeli() {
+    // [FIX] Ambil nama produk dari Hidden Input (yang valid)
+    // Jika kosong (user ngetik manual), ambil dari Input Text biasa
+    var produkNama = document.getElementById('beli-produk-selected').value;
+    if (!produkNama) {
+        produkNama = document.getElementById('beli-cari-produk').value;
+    }
 
-      // Masukkan ke array
-      keranjangBeli.push({
-          produk: prod,
-          qty: qty,
-          hargaSatuan: harga,
-          isTukar: isTukar,
-          total: qty * harga
-      });
+    // [FIX] Definisikan variabel 'prod' agar kode bawahnya jalan
+    var prod = produkNama;
 
-      renderKeranjangBeli();
-  }
+    // Ambil data lain
+    var qty = parseInt(document.getElementById('beli-qty').value) || 0;
+    var harga = parseInt(String(document.getElementById('beli-harga').value).replace(/\D/g, '')) || 0;
+    var isTukar = document.getElementById('beli-tukar').checked;
 
-  function renderKeranjangBeli() {
-      const tb = document.querySelector('#tabel-keranjang-beli tbody');
-      tb.innerHTML = '';
-      let grandTotal = 0;
+    // Validasi
+    if (!prod) {
+        Swal.fire('Eits', 'Pilih atau ketik nama produk dulu!', 'warning');
+        return;
+    }
+    if (qty <= 0) {
+        Swal.fire('Eits', 'Jumlah (Qty) minimal 1', 'warning');
+        return;
+    }
 
-      keranjangBeli.forEach((item, index) => {
-          grandTotal += item.total;
-          let badgeTukar = item.isTukar ? '<span class="badge bg-warning text-dark" style="font-size:10px">Tukar Tabung</span>' : '<span class="badge bg-success" style="font-size:10px">Tabung Baru</span>';
-          
-          tb.innerHTML += `
-            <tr>
-                <td class="fw-bold">${item.produk}</td>
-                <td>${badgeTukar}</td>
-                <td>${item.qty}</td>
-                <td>${rupiah(item.total)}</td>
-                <td><button class="btn btn-sm btn-light text-danger" onclick="hapusItemBeli(${index})"><i class="material-icons" style="font-size:16px">delete</i></button></td>
-            </tr>
-          `;
-      });
+    // Hitung Total Item Ini
+    var total = qty * harga;
 
-      document.getElementById('label-grand-total-beli').innerText = rupiah(grandTotal);
-  }
+    // Masukkan ke Array Global Keranjang
+    // Pastikan variabel global 'keranjangBeli' sudah ada di paling atas script
+    keranjangBeli.push({
+        produk: prod,
+        qty: qty,
+        harga: harga,
+        total: total,
+        isTukar: isTukar
+    });
+
+    // Render Ulang Tabel
+    renderKeranjangBeli();
+
+    // Reset Input Form
+    document.getElementById('beli-cari-produk').value = '';     // Reset pencarian
+    document.getElementById('beli-produk-selected').value = ''; // Reset hidden ID
+    document.getElementById('beli-qty').value = '';
+    document.getElementById('beli-harga').value = '';
+    document.getElementById('beli-subtotal-label').innerText = 'Rp 0';
+}
+
+function renderKeranjangBeli() {
+    const tb = document.querySelector('#tabel-keranjang-beli tbody');
+    tb.innerHTML = '';
+    let grandTotal = 0;
+
+    keranjangBeli.forEach((item, index) => {
+        grandTotal += item.total;
+        let badgeTukar = item.isTukar ? 
+            '<span class="badge bg-warning text-dark" style="font-size:10px">Tukar Tabung</span>' : 
+            '<span class="badge bg-success" style="font-size:10px">Tabung Baru</span>';
+        
+        tb.innerHTML += `
+          <tr>
+              <td class="fw-bold">${item.produk}</td>
+              <td>${badgeTukar}</td>
+              <td>${item.qty}</td>
+              <td>${rupiah(item.total)}</td>
+              <td>
+                  <button class="btn btn-sm btn-light text-danger" onclick="hapusItemBeli(${index})">
+                      <i class="material-icons" style="font-size:16px">delete</i>
+                  </button>
+              </td>
+          </tr>
+        `;
+    });
+
+    document.getElementById('label-grand-total-beli').innerText = rupiah(grandTotal);
+    
+    // [HAPUS 2 BARIS PEMBERSIH INPUT DARI SINI]
+}
 
   function hapusItemBeli(index) {
       keranjangBeli.splice(index, 1);
@@ -2207,33 +2235,279 @@ function setHargaOtomatis() {
       renderKeranjangBeli();
   }
 
-  function prosesBeliFinal() {
-      const supplier = document.getElementById('beli-supplier').value;
-      
-      if(!supplier) return myAlert('Error', 'Pilih Supplier dulu!', 'error');
-      if(keranjangBeli.length === 0) return myAlert('Error', 'List belanja masih kosong', 'error');
-
-      // Hitung Grand Total Angka
-      let grandTotal = keranjangBeli.reduce((acc, item) => acc + item.total, 0);
-
-      myConfirm('Simpan Pembelian', `Total Tagihan: ${rupiah(grandTotal)}\nSupplier: ${supplier}\n\nLanjutkan simpan stok?`, () => {
-          
-          const payload = {
-              supplier: supplier,
-              items: keranjangBeli,
-              grandTotal: grandTotal
-          };
-
-          loading(true);
-          google.script.run.withSuccessHandler(res => {
-              loading(false);
-              myAlert('Sukses', res, 'success');
-              resetKeranjangBeli();
-              loadProduk(); // Refresh stok di tabel produk
-          }).simpanPembelianBulk(payload);
-      });
+function prosesBeliFinal() {
+  // 1. Ambil data keranjang (sesuaikan dengan variabel global keranjang Anda)
+  // Asumsi variabel global Anda bernama: keranjangBeli
+  if (!keranjangBeli || keranjangBeli.length === 0) {
+    return Swal.fire('Kosong', 'Belum ada barang di daftar belanja', 'warning');
   }
 
+  // 2. Ambil Input Baru
+  const noFaktur = document.getElementById('beli-noFaktur').value;
+  const akunBayar = document.getElementById('beli-akunBayar').value;
+
+  if (!noFaktur) {
+    return Swal.fire('Wajib', 'Mohon isi Nomor Faktur Supplier', 'warning');
+  }
+  if (!akunBayar) {
+    return Swal.fire('Wajib', 'Pilih Akun Pembayaran', 'warning');
+  }
+
+  // 3. Siapkan Object Data
+  const dataKirim = {
+    supplier: document.getElementById('beli-supplier').value, // Atau ambil dari variabel global
+    noFaktur: noFaktur,
+    akunBayar: akunBayar,
+    grandTotal: parseInt(document.getElementById('label-grand-total-beli').innerText.replace(/\D/g,'')) || 0,
+    items: keranjangBeli
+  };
+
+  // 4. Kirim ke Server
+  loading(true); // Jika punya fungsi loading
+  google.script.run
+    .withSuccessHandler(function(res) {
+      loading(false);
+      Swal.fire('Sukses', res, 'success');
+      resetKeranjangBeli();
+      document.getElementById('beli-noFaktur').value = ''; // Reset input
+    })
+    .simpanPembelianBulk(dataKirim);
+}
+
+// --- INIT PAGE RETUR (Panggil saat menu diklik) ---
+function loadPageRetur() {
+  // Switch tampilan (logika ganti page anda)
+  document.querySelectorAll('.page-section').forEach(el => el.classList.add('d-none'));
+  document.getElementById('page-retur-pembelian').classList.remove('d-none');
+  
+  // Load Akun ke Dropdown Retur (Reuse data akun jika ada)
+  google.script.run.withSuccessHandler(function(list){
+     let html = '';
+     list.forEach(a => html += `<option value="${a.nama}">${a.nama}</option>`);
+     document.getElementById('retur-akun-masuk').innerHTML = html;
+     // Sekalian update dropdown beli jika belum
+     document.getElementById('beli-akunBayar').innerHTML = html;
+  }).getDaftarAkun(); 
+}
+
+// --- CARI FAKTUR ---
+function cariFakturRetur() {
+  const kataKunci = document.getElementById('retur-cari-input').value;
+  if(!kataKunci) return Swal.fire('Input', 'Masukkan nomor faktur!', 'info');
+
+  google.script.run.withSuccessHandler(function(data) {
+    const tbody = document.getElementById('tabel-hasil-retur');
+    tbody.innerHTML = '';
+    
+    if (data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center">Data tidak ditemukan</td></tr>';
+      return;
+    }
+
+    data.forEach(row => {
+      // Kita kirim object row ke fungsi pilih via tombol
+      // row berisi: {idBeli, tanggal, noFaktur, produk, qtyAwal, hargaTotal}
+      // Kita hitung harga satuan kasar:
+      let hargaSatuan = Math.round(row.hargaTotal / row.qtyAwal);
+      
+      let btn = `<button class="btn btn-sm btn-outline-danger rounded-pill" 
+                  onclick="pilihItemRetur('${row.noFaktur}', '${row.produk}', ${hargaSatuan})">
+                  <i class="material-icons fs-6">undo</i> Retur
+                 </button>`;
+
+      let tr = `
+        <tr>
+          <td>${row.tanggal}</td>
+          <td><span class="badge bg-secondary">${row.noFaktur}</span></td>
+          <td>${row.produk}</td>
+          <td>${row.qtyAwal} Unit</td>
+          <td>${btn}</td>
+        </tr>
+      `;
+      tbody.innerHTML += tr;
+    });
+  }).cariFakturPembelianServer(kataKunci);
+}
+
+// --- PILIH ITEM UNTUK DIRETUR ---
+function pilihItemRetur(faktur, produk, hargaSatuan) {
+  document.getElementById('form-retur-panel').classList.remove('d-none');
+  
+  document.getElementById('retur-faktur-asal').value = faktur;
+  document.getElementById('retur-nama-produk').value = produk;
+  document.getElementById('retur-harga').value = hargaSatuan;
+  document.getElementById('retur-qty').value = '';
+  document.getElementById('retur-total-show').innerText = 'Rp 0';
+}
+
+// --- HITUNG TOTAL REFUND ---
+function hitungRefund() {
+  let qty = document.getElementById('retur-qty').value || 0;
+  let harga = document.getElementById('retur-harga').value || 0;
+  let total = qty * harga;
+  document.getElementById('retur-total-show').innerText = 'Rp ' + total.toLocaleString('id-ID');
+}
+
+// --- PROSES RETUR FINAL ---
+function prosesReturFinal() {
+  const data = {
+    noFaktur: document.getElementById('retur-faktur-asal').value,
+    produk: document.getElementById('retur-nama-produk').value,
+    qtyRetur: document.getElementById('retur-qty').value,
+    totalRefund: parseInt(document.getElementById('retur-total-show').innerText.replace(/\D/g,'')),
+    akunMasuk: document.getElementById('retur-akun-masuk').value,
+    alasan: 'Retur Barang via Web'
+  };
+
+  if (data.qtyRetur <= 0) return Swal.fire('Error', 'Qty retur harus lebih dari 0', 'error');
+
+  google.script.run.withSuccessHandler(function(res) {
+    if (res.status === 'success') {
+      Swal.fire('Berhasil', 'Retur tercatat. Stok berkurang, Saldo bertambah.', 'success');
+      
+      // CETAK STRUK
+      cetakBuktiRetur(res, data);
+      
+      // Reset Form
+      document.getElementById('form-retur-panel').classList.add('d-none');
+      document.getElementById('tabel-hasil-retur').innerHTML = '';
+      document.getElementById('retur-cari-input').value = '';
+    }
+  }).prosesReturPembelianFinal(data);
+}
+
+// --- FUNGSI CETAK ---
+function cetakBuktiRetur(res, data) {
+  let w = window.open('', 'PRINT', 'height=500,width=400');
+  w.document.write(`
+    <html>
+    <body style="font-family: monospace; padding: 20px;">
+      <h3 style="text-align:center; border-bottom: 1px dashed #000; padding-bottom:10px;">BUKTI RETUR PEMBELIAN</h3>
+      <div>ID Retur: ${res.idRetur}</div>
+      <div>Tanggal : ${res.tgl}</div>
+      <br>
+      <div>Faktur Asal : ${data.noFaktur}</div>
+      <div>Produk      : ${data.produk}</div>
+      <div>Qty Retur   : ${data.qtyRetur}</div>
+      <div style="text-align:right; font-weight:bold; margin-top:10px;">TOTAL REFUND: Rp ${data.totalRefund.toLocaleString()}</div>
+      <br>
+      <div>Dana masuk ke: ${data.akunMasuk}</div>
+      <br>
+      <center style="border-top: 1px dashed #000; padding-top:10px;">Barang dikembalikan ke Supplier</center>
+    </body>
+    </html>
+  `);
+  w.document.close();
+  w.focus();
+  w.print();
+  w.close();
+}
+
+
+// Panggil fungsi ini saat halaman Pembelian dibuka (misal di showPage('pembelian'))
+function loadAkunUntukPembelian() {
+  const elSelect = document.getElementById('beli-akunBayar');
+  elSelect.innerHTML = '<option value="">Memuat data...</option>';
+
+  google.script.run.withSuccessHandler(function(dataAkun) {
+      let html = '<option value="" disabled selected>-- Pilih Akun Pembayaran --</option>';
+      
+      // Tambahkan Opsi Hutang (Opsional, jika pembelian bisa hutang ke supplier)
+      html += '<option value="Hutang" class="text-danger fw-bold">Hutang (Tempo)</option>'; 
+      
+      dataAkun.forEach(akun => {
+          // Format saldo ke Rupiah
+          let saldoFmt = Number(akun.saldo).toLocaleString('id-ID');
+          html += `<option value="${akun.nama}">${akun.nama} (Saldo: Rp ${saldoFmt})</option>`;
+      });
+
+      elSelect.innerHTML = html;
+  }).getDaftarAkun();
+}
+
+// ==========================================
+// 2. LOGIKA PENCARIAN PRODUK (AUTOCOMPLETE)
+// ==========================================
+
+let cacheProdukList = []; // Variabel global untuk menyimpan daftar produk sementara
+
+// Fungsi untuk memuat data produk sekali saja saat halaman dimuat
+function loadDataProdukGlobal() {
+   google.script.run.withSuccessHandler(function(data){
+       // Data produk dari server: [ID, Nama, Jual, Beli, StokIsi, StokKosong, ...]
+       // Kita mapping agar mudah dicari
+       cacheProdukList = data.map(row => {
+          return {
+             nama: row[1],      // Nama Produk
+             hargaBeli: row[3], // Harga Beli (Default)
+             stok: row[4]       // Stok Isi Sekarang
+          };
+       });
+   }).getData('PRODUK'); // Pastikan fungsi getData('PRODUK') bisa diakses atau buat wrapper di CODE.GS
+}
+
+// Fungsi dipanggil saat mengetik di kolom pencarian produk
+function filterProdukBeli() {
+    const input = document.getElementById('beli-cari-produk');
+    const keyword = input.value.toLowerCase();
+    const container = document.getElementById('hasil-cari-produk-beli');
+    
+    if(keyword.length < 1) {
+        container.classList.add('d-none');
+        return;
+    }
+
+    // Filter dari cacheProdukList
+    const filtered = cacheProdukList.filter(item => item.nama.toLowerCase().includes(keyword));
+
+    let html = '';
+    if(filtered.length === 0) {
+        html = '<div class="list-group-item text-muted small">Produk tidak ditemukan</div>';
+    } else {
+        filtered.forEach(item => {
+            // Saat diklik, panggil fungsi pilihProduk
+            // Kita kirim nama dan harga belinya
+            html += `
+            <a href="javascript:void(0)" class="list-group-item list-group-item-action py-2" 
+              onclick="pilihProdukBeli('${item.nama}', ${item.hargaBeli})">
+                <div class="fw-bold text-dark">${item.nama}</div>
+                <div class="d-flex justify-content-between small text-muted">
+                    <span>HPP: Rp ${Number(item.hargaBeli).toLocaleString()}</span>
+                    <span>Stok: ${item.stok}</span>
+                </div>
+            </a>
+            `;
+        });
+    }
+
+    container.innerHTML = html;
+    container.classList.remove('d-none');
+}
+
+// Fungsi saat produk dipilih dari list
+function pilihProdukBeli(namaProduk, hargaBeli) {
+    // 1. Isi Input Teks (Visual)
+    document.getElementById('beli-cari-produk').value = namaProduk;
+    
+    // 2. Isi Hidden Input (Data Valid)
+    document.getElementById('beli-produk-selected').value = namaProduk; 
+    
+    // 3. Isi Harga Beli Otomatis ke Input Harga
+    document.getElementById('beli-harga').value = hargaBeli;
+    
+    // 4. Sembunyikan Suggestion
+    document.getElementById('hasil-cari-produk-beli').classList.add('d-none');
+    
+    // 5. [PENTING] Trigger update subtotal (barangkali Qty sudah diisi duluan)
+    updateHargaBeli(); 
+}
+
+// Hapus hasil pencarian jika klik di luar area
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#hasil-cari-produk-beli') && !e.target.closest('#beli-cari-produk')) {
+        document.getElementById('hasil-cari-produk-beli').classList.add('d-none');
+    }
+});
 // --- javascript ---
 
   // --- RIWAYAT TRANSAKSI ---
@@ -2993,30 +3267,67 @@ document.addEventListener('click', function(e) {
 });
 
 function simpanSupplier() {
-    // ... (kode validasi tetap sama) ...
-    const nama = document.getElementById('sup-nama').value; // Ambil nama dulu
-    // ...
+    // 1. Ambil nilai
+    var namaVal = document.getElementById('sup-nama').value;
+    var hpVal = document.getElementById('sup-hp').value;
+    var alamatVal = document.getElementById('sup-alamat').value;
 
-    google.script.run.withSuccessHandler(() => {
-        loading(false);
-        const modalEl = document.getElementById('modalSupplier');
-        const modalInstance = bootstrap.Modal.getInstance(modalEl);
-        if (modalInstance) modalInstance.hide();
+    // 2. Validasi
+    if (!namaVal) {
+        Swal.fire('Gagal', 'Nama Supplier wajib diisi!', 'warning');
+        return;
+    }
 
-        myAlert('Berhasil', 'Data Supplier berhasil ditambahkan!', 'success');
+    var dataKirim = {
+        nama: namaVal,
+        hp: hpVal,
+        alamat: alamatVal
+    };
 
-        // [UBAHAN DISINI]
-        loadPembelianData(); // Refresh data global
-        
-        // Auto-fill nama supplier yang baru dibuat ke kolom pencarian
-        document.getElementById('beli-supplier').value = nama; 
+    // Tampilkan loading di tombol
+    var btnSimpan = document.querySelector('#modalSupplier .btn-primary');
+    var txtAwal = btnSimpan.innerHTML;
+    btnSimpan.innerHTML = 'Menyimpan...';
+    btnSimpan.disabled = true;
 
-        // Reset Form
-        document.getElementById('sup-nama').value = '';
-        document.getElementById('sup-hp').value = '';
-        document.getElementById('sup-alamat').value = '';
+    google.script.run
+        .withSuccessHandler(function() {
+            // Reset Tombol
+            btnSimpan.innerHTML = txtAwal;
+            btnSimpan.disabled = false;
 
-    }).tambahSupplier(dataKirim);
+            // Tutup Modal
+            var modalEl = document.getElementById('modalSupplier');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if(modal) modal.hide();
+
+            // === [FITUR BARU DISINI] ===
+            // 1. Otomatis isi kolom supplier di halaman pembelian dengan nama baru
+            if(document.getElementById('beli-supplier')) {
+                document.getElementById('beli-supplier').value = namaVal;
+            }
+            
+            // 2. Reset Form Modal
+            document.getElementById('sup-nama').value = '';
+            document.getElementById('sup-hp').value = '';
+            document.getElementById('sup-alamat').value = '';
+
+            // 3. Pesan Sukses
+            Swal.fire({
+                icon: 'success',
+                title: 'Berhasil',
+                text: 'Supplier ' + namaVal + ' siap digunakan!',
+                timer: 1500,
+                showConfirmButton: false
+            });
+
+        })
+        .withFailureHandler(function(err) {
+             btnSimpan.innerHTML = txtAwal;
+             btnSimpan.disabled = false;
+             Swal.fire('Error', err.message, 'error');
+        })
+        .tambahSupplier(dataKirim);
 }
 
   function prosesBeli() {
