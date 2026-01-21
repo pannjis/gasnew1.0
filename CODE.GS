@@ -1120,7 +1120,7 @@ function hapusKeuangan(id) {
   throw new Error("ID tidak ditemukan");
 }
 
-// [CODE.GS] Cari fungsi ini dan update bagian Loop Pengeluaran
+// [CODE.GS] Fungsi Get Laporan Detail (Revisi Pemisahan Retur)
 function getLaporanDetail(startStr, endStr) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
    
@@ -1134,7 +1134,8 @@ function getLaporanDetail(startStr, endStr) {
   let laporan = {
     pendapatan: 0,
     hpp: 0,
-    pengeluaran: 0,
+    pengeluaran: 0, // Khusus Biaya Operasional (Gaji, Listrik, dll)
+    totalRetur: 0,  // [BARU] Khusus Retur Penjualan
     pembelian: 0,
     nilaiStok: 0,      
     asetFisik: 0,      
@@ -1145,7 +1146,7 @@ function getLaporanDetail(startStr, endStr) {
     listPengeluaran: []
   };
 
-  // 1. MAPPING DATA PRODUK (Tetap sama)
+  // 1. MAPPING DATA PRODUK
   let mapProduk = {};
   prodData.forEach(p => {
     let hppIsi = Number(p[3]) || 0;
@@ -1163,7 +1164,7 @@ function getLaporanDetail(startStr, endStr) {
     laporan.nilaiStok += (nilaiCangkang + nilaiIsi);
   });
 
-  // 2. HITUNG TRANSAKSI (Tetap sama)
+  // 2. HITUNG TRANSAKSI (PEMASUKAN & HPP AWAL)
   trxData.forEach(row => {
     let tgl = new Date(row[1]);
     if (tgl >= startDate && tgl <= endDate) {
@@ -1191,29 +1192,44 @@ function getLaporanDetail(startStr, endStr) {
     }
   });
 
-// 3. HITUNG PENGELUARAN & RETUR
+  // 3. HITUNG PENGELUARAN & RETUR (LOGIKA UTAMA)
   keuData.forEach(row => {
     let tgl = new Date(row[1]);
     if (tgl >= startDate && tgl <= endDate) {
       
-      // LOGIKA BARU DISINI
+      // -- SKENARIO 1: RETUR PENJUALAN --
       if (row[3] === 'Retur Penjualan') {
-         // Jangan masukkan ke 'pengeluaran', tapi kurangi Pendapatan & HPP
          let nilaiRefund = Number(row[4]) || 0;
-         let nilaiHPPRetur = Number(row[6]) || 0; // Ambil dari kolom baru tadi
+         let nilaiHPPRetur = Number(row[6]) || 0;
          
-         laporan.pendapatan -= nilaiRefund; // Omzet berkurang
-         laporan.hpp -= nilaiHPPRetur;      // HPP (Modal) berkurang karena barang balik
-         
-         // Opsional: Jika ingin mencatat history retur di list, bisa dibuat array terpisah
-         // Tapi jangan ditambahkan ke laporan.pengeluaran agar Laba Bersih benar.
+         // A. Pendapatan JANGAN dikurangi (agar Omzet tetap utuh sesuai struk awal)
+         // laporan.pendapatan -= nilaiRefund; // (Dihapus/Disable)
 
+         // B. HPP DIKURANGI (Karena barang balik ke stok, HPP batal keluar)
+         laporan.hpp -= nilaiHPPRetur; 
+
+         // C. Masukkan ke wadah khusus RETUR (bukan pengeluaran operasional)
+         laporan.totalRetur += nilaiRefund; 
+
+         // D. Tetap masukkan ke tabel rincian (opsional, agar bisa dicek)
+         laporan.listPengeluaran.push({
+            id: row[0],
+            tanggal: row[1],
+            kategori: 'Retur Penjualan',
+            ket: row[5],
+            jumlah: nilaiRefund
+         });
+
+      // -- SKENARIO 2: PENGELUARAN LAIN / PEMBELIAN STOK --
       } else if (row[2] === 'Pengeluaran') {
-        // Pengeluaran Normal (Listrik, Gaji, dll) & Pembelian Stok
+
         if (row[3] === 'Pembelian Stok') {
+           // Pembelian stok tidak mengurangi laba rugi langsung (masuk aset)
            laporan.pembelian += Number(row[4]);
         } else {
+           // Ini Biaya Operasional (Listrik, Gaji, Makan, dll)
            laporan.pengeluaran += Number(row[4]);
+           
            laporan.listPengeluaran.push({
               id: row[0],
               tanggal: row[1],
@@ -1226,10 +1242,12 @@ function getLaporanDetail(startStr, endStr) {
     }
   });
 
-  // 4. HITUNG LABA
-  // Sekarang laba kotor akan akurat (Omzet Bersih - HPP Bersih)
+  // 4. HITUNG LABA BERSIH (Final Calculation)
+  // Laba Kotor = Omzet - HPP (yg sudah dikurangi retur barang)
   laporan.labaKotor = laporan.pendapatan - laporan.hpp;
-  laporan.labaBersih = laporan.labaKotor - laporan.pengeluaran;
+  
+  // Laba Bersih = Laba Kotor - Biaya Ops - Uang Kembali (Retur)
+  laporan.labaBersih = laporan.labaKotor - laporan.pengeluaran - laporan.totalRetur;
 
   laporan.daftarAkun = getDaftarAkun();
 
