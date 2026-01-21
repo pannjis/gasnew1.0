@@ -17,6 +17,7 @@
   let dataBeliTemp = [];
   let keranjangBeli = [];
   let globalProdukList = [];
+  let currentReturData = null;
   let draftBuffer = {};
   let tempProductPOS = {};
   let globalModalObj;
@@ -804,102 +805,103 @@ function prosesGantiPassword() {
 }
 
 
+// [JAVASCRIPT.HTML] Update Fungsi loadDashboard (Anti-Loading Stuck)
 function loadDashboard(startDate = null, endDate = null) {
-  // --- 1. SET LOADING STATE UNTUK SEMUA ELEMEN ---
-  // Kita ubah semua angka jadi "..." atau "Loading" sebelum data datang
-  
+  // 1. SET TAMPILAN JADI LOADING DULU
   const setHtml = (id, html) => {
       const el = document.getElementById(id);
       if(el) el.innerHTML = html;
   };
 
-  // Kartu Pendapatan & Pengeluaran
-  setHtml('dash-main-income', '<span class="spinner-border spinner-border-sm"></span>');
-  setHtml('dash-avg-trx', 'Menghitung...');
-  setHtml('dash-main-expense', '<span class="spinner-border spinner-border-sm"></span>');
-  setHtml('dash-retur', 'Menghitung...');
+  const spinner = '<div class="spinner-border spinner-border-sm text-secondary" role="status"></div>';
 
-  // Kartu Pesanan & Refill
+  setHtml('dash-main-income', spinner);
+  setHtml('dash-avg-trx', '...');
+  setHtml('dash-main-expense', spinner);
+  setHtml('dash-retur', '...');
   setHtml('dash-count-order', '...');
-  setHtml('dash-count-pel', 'Memuat...');
+  setHtml('dash-count-pel', '...');
   setHtml('dash-count-refill', '...');
-
-  // Info Periode
   setHtml('dash-periode-info', 'Sedang memuat data...');
+  
+  // Reset Tabel Top Produk
+  setHtml('tabel-top-produk', '<tr><td colspan="2" class="text-center py-4 text-muted"><div class="spinner-border text-primary spinner-border-sm mb-2"></div><br>Sedang menganalisa data...</td></tr>');
 
-  // Tabel Top Produk
-  setHtml('tabel-top-produk', '<tr><td colspan="2" class="text-center py-4 text-muted"><div class="spinner-border text-primary spinner-border-sm mb-2"></div><br>Sedang menganalisa produk...</td></tr>');
-
-  // --- 2. PANGGIL DATA DARI SERVER ---
-  google.script.run.withSuccessHandler(res => {
-    const stats = res.stats;
-    const accounts = res.accounts;
-
-    // 1. UPDATE INFO PERIODE
-    document.getElementById('dash-periode-info').innerText = `Periode: ${res.periode}`;
-    
-    // 2. UPDATE NILAI KARTU
-    document.getElementById('dash-main-income').innerText = rupiah(stats.pendapatan);
-    document.getElementById('dash-avg-trx').innerText = `Rata-rata: ${rupiah(stats.rataRataTransaksi)} / trx`;
-    
-    document.getElementById('dash-main-expense').innerText = rupiah(stats.pengeluaran);
-    document.getElementById('dash-retur').innerText = `Retur: ${rupiah(stats.retur)}`;
-    
-    document.getElementById('dash-count-order').innerText = stats.pesanan;
-    document.getElementById('dash-count-pel').innerText = `${stats.totalPelanggan} Pelanggan`;
-    
-    document.getElementById('dash-count-refill').innerText = stats.qtyRefill + " Pcs";
-
-    // 3. RENDER TABEL TOP PRODUK
-const prodTable = document.getElementById('tabel-top-produk');
-    if(prodTable) {
-        prodTable.innerHTML = '';
-        const sortedProduk = Object.entries(stats.produkTerjual).sort(([,a],[,b]) => b - a);
+  // 2. PANGGIL DATA KE SERVER (DENGAN PENANGANAN ERROR)
+  google.script.run
+    .withFailureHandler(err => {
+        // [PENTING] Jika server error, matikan loading dan tampilkan pesan
+        console.error("Dashboard Error:", err);
+        setHtml('dash-main-income', '<span class="text-danger small">Error</span>');
+        setHtml('dash-main-expense', '<span class="text-danger small">Error</span>');
+        setHtml('dash-periode-info', '<span class="text-danger">Gagal memuat data dashboard.</span>');
+        setHtml('tabel-top-produk', `<tr><td colspan="2" class="text-center text-danger py-4">Error: ${err.message}</td></tr>`);
+    })
+    .withSuccessHandler(res => {
+        const stats = res.stats;
         
-        if(sortedProduk.length === 0) {
-            prodTable.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4 small">Belum ada data penjualan.</td></tr>';
-        } else {
-            // Ambil penjualan tertinggi sebagai acuan 100% progress bar
-            const maxQty = sortedProduk[0][1]; 
+        // 1. UPDATE INFO PERIODE
+        document.getElementById('dash-periode-info').innerText = `Periode: ${res.periode}`;
+        
+        // 2. UPDATE NILAI KARTU
+        // Pastikan angka valid (tidak NaN) sebelum ditampilkan
+        const safeRupiah = (val) => rupiah(Number(val) || 0);
 
-            // Ambil 5 Besar saja
-            sortedProduk.slice(0, 5).forEach(([nama, qty], index) => {
-                const rank = index + 1;
-                // Hitung lebar bar (persentase)
-                const percent = (qty / maxQty) * 100;
-                
-                // Tentukan Warna Badge Ranking
-                let badgeRank = `<span class="badge bg-light text-secondary border" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">${rank}</span>`;
-                
-                if(rank === 1) badgeRank = `<span class="badge bg-warning text-dark border border-warning shadow-sm" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">1</span>`;
-                if(rank === 2) badgeRank = `<span class="badge bg-secondary text-white border border-secondary shadow-sm" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">2</span>`;
-                if(rank === 3) badgeRank = `<span class="badge bg-white text-secondary border shadow-sm" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">3</span>`;
+        document.getElementById('dash-main-income').innerText = safeRupiah(stats.pendapatan);
+        document.getElementById('dash-avg-trx').innerText = `Rata-rata: ${safeRupiah(stats.rataRataTransaksi)} / trx`;
+        
+        document.getElementById('dash-main-expense').innerText = safeRupiah(stats.pengeluaran);
+        document.getElementById('dash-retur').innerText = `Retur: ${safeRupiah(stats.retur)}`;
+        
+        document.getElementById('dash-count-order').innerText = stats.pesanan;
+        document.getElementById('dash-count-pel').innerText = `${stats.totalPelanggan} Pelanggan`;
+        document.getElementById('dash-count-refill').innerText = stats.qtyRefill + " Pcs";
 
-                prodTable.innerHTML += `
-                <tr>
-                    <td class="ps-3 py-3" style="width: 40px; vertical-align:top;">
-                        ${badgeRank}
-                    </td>
-                    <td class="pe-3 py-2">
-                        <div class="d-flex justify-content-between align-items-center mb-1">
-                             <span class="fw-bold text-dark text-truncate" style="font-size:13px; max-width:500px;">${nama}</span>
-                             <span class="fw-bold text-primary" style="font-size:12px;">${qty} Terjual</span>
-                        </div>
-                        <div class="progress" style="height: 6px; border-radius: 10px; background-color: #f0f2f5;">
-                            <div class="progress-bar bg-primary" role="progressbar" style="width: ${percent}%; border-radius: 10px;"></div>
-                        </div>
-                    </td>
-                </tr>`;
-            });
+        // 3. RENDER TABEL TOP PRODUK
+        const prodTable = document.getElementById('tabel-top-produk');
+        if(prodTable) {
+            prodTable.innerHTML = '';
+            const sortedProduk = Object.entries(stats.produkTerjual).sort(([,a],[,b]) => b - a);
+            
+            if(sortedProduk.length === 0) {
+                prodTable.innerHTML = '<tr><td colspan="2" class="text-center text-muted py-4 small">Belum ada data penjualan.</td></tr>';
+            } else {
+                const maxQty = sortedProduk[0][1] || 1; // Hindari pembagian nol
+
+                sortedProduk.slice(0, 5).forEach(([nama, qty], index) => {
+                    const rank = index + 1;
+                    const percent = (qty / maxQty) * 100;
+                    
+                    let badgeRank = `<span class="badge bg-light text-secondary border" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">${rank}</span>`;
+                    if(rank === 1) badgeRank = `<span class="badge bg-warning text-dark border border-warning shadow-sm" style="width:24px; height:24px; display:flex; align-items:center; justify-content:center; border-radius:50%;">1</span>`;
+                    
+                    prodTable.innerHTML += `
+                    <tr>
+                        <td class="ps-3 py-3" style="width: 40px; vertical-align:top;">${badgeRank}</td>
+                        <td class="pe-3 py-2">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <span class="fw-bold text-dark text-truncate" style="font-size:13px; max-width:180px;">${nama}</span>
+                                <span class="fw-bold text-primary" style="font-size:12px;">${qty}</span>
+                            </div>
+                            <div class="progress" style="height: 6px; border-radius: 10px; background-color: #f0f2f5;">
+                                <div class="progress-bar bg-primary" role="progressbar" style="width: ${percent}%; border-radius: 10px;"></div>
+                            </div>
+                        </td>
+                    </tr>`;
+                });
+            }
         }
-    }
 
-    // 4. RENDER CHART
-    renderCharts(stats); 
+        // 4. RENDER CHART (Gunakan try-catch agar chart error tidak mematikan fungsi lain)
+        try {
+            renderCharts(stats); 
+        } catch(e) {
+            console.warn("Gagal render chart:", e);
+        }
 
-  }).getDashboardRealtime(startDate, endDate);
+    })
+    .getDashboardRealtime(startDate, endDate);
 }
-
 // --- FUNGSI BARU UNTUK TOMBOL FILTER ---
 
 function applyDashboardFilter() {
@@ -2395,16 +2397,21 @@ function renderTabelRiwayat(tableId, data, tipe) {
    }
 
    data.forEach((trx, index) => {
-      // Parsing Tanggal
       let dateObj = new Date(trx.waktu);
       let tglStr = dateObj.toLocaleString('id-ID');
-      let timestamp = dateObj.getTime(); // Waktu dalam milidetik (PENTING UNTUK FILTER)
+      let timestamp = dateObj.getTime();
 
-      // Kita simpan timestamp di atribut data-ts pada baris <tr>
+      // [BARU] Logika Tag Retur
+      let tagRetur = '';
+      if (trx.isRetur) {
+          tagRetur = `<br><span class="badge bg-danger border border-light shadow-sm mt-1" style="font-size:9px; letter-spacing:0.5px;">[ TELAH DI RETUR ]</span>`;
+      }
+
       tb.innerHTML += `
         <tr data-ts="${timestamp}"> 
            <td>
-              <span class="fw-bold text-primary" style="font-size:0.9rem">${trx.id}</span><br>
+              <span class="fw-bold text-primary" style="font-size:0.9rem">${trx.id}</span>
+              ${tagRetur} <br>
               <small class="text-muted" style="font-size:0.8rem">${tglStr}</small>
            </td>
            <td>
@@ -2723,6 +2730,8 @@ if(tipe === 'JUAL') {
 
 // 5. BUKA FORM RETUR (Baru)
 function bukaFormRetur(trx, tipe) {
+    currentReturData = trx; // [BARU] Simpan data transaksi ke global var
+    
     document.getElementById('retur-id-trx').value = trx.id;
     document.getElementById('retur-jenis-trx').value = tipe;
     document.getElementById('check-retur-semua').checked = false;
@@ -2732,7 +2741,6 @@ function bukaFormRetur(trx, tipe) {
     container.innerHTML = '';
 
     trx.items.forEach((item, idx) => {
-        // Hitung harga satuan kasar untuk referensi refund
         let hargaSatuan = item.hargaTotal / item.qty;
         
         container.innerHTML += `
@@ -2783,16 +2791,20 @@ function prosesSimpanRetur() {
     
     let itemsToReturn = [];
     let hasInput = false;
+    let totalRefundEstimasi = 0; // [BARU]
 
     const rows = document.querySelectorAll('.item-retur-row');
     rows.forEach(row => {
         const prod = row.querySelector('.data-produk').value;
         const tipe = row.querySelector('.data-tipe').value;
-        const harga = row.querySelector('.data-harga').value;
+        const harga = Number(row.querySelector('.data-harga').value);
         const qtyInput = row.querySelector('.input-qty-retur').value;
         const qtyRetur = Number(qtyInput);
 
-        if(qtyRetur > 0) hasInput = true;
+        if(qtyRetur > 0) {
+            hasInput = true;
+            totalRefundEstimasi += (qtyRetur * harga); // Hitung total
+        }
         
         itemsToReturn.push({
             produk: prod,
@@ -2806,39 +2818,40 @@ function prosesSimpanRetur() {
 
     const payload = {
         idTrx: idTrx,
-        jenis: jenis, // 'JUAL' atau 'BELI'
+        jenis: jenis,
         alasan: alasan,
         items: itemsToReturn
     };
     
-    // Kirim ke Backend
     myConfirm('Konfirmasi Retur', 'Stok akan disesuaikan. Lanjutkan?', () => {
         loading(true);
         google.script.run.withSuccessHandler(res => {
             loading(false);
             
-            // Tutup Modal
             const modalEl = document.getElementById('modalFormRetur');
             const modalInstance = bootstrap.Modal.getInstance(modalEl);
             if(modalInstance) modalInstance.hide();
             
             myAlert('Sukses', res, 'success');
             
-            // 1. Refresh Tabel Riwayat (Sesuai Tab yang aktif)
+            // --- [BARU] POPUP CETAK INVOICE RETUR ---
+            if(jenis === 'JUAL') {
+                // Tampilkan invoice retur
+                cetakInvoiceRetur(payload, totalRefundEstimasi);
+            }
+            // ----------------------------------------
+            
             if(jenis === 'JUAL') {
                 loadRiwayatJual();
             } else {
                 loadRiwayatBeli();
             }
 
-            // [TAMBAHAN PENTING AGAR REALTIME]
-            // Panggil fungsi-fungsi ini agar data lain ikut berubah tanpa refresh page
-            
             setTimeout(() => {
-                loadDashboard();  // Update Angka Laba, Pengeluaran, & Stok Dashboard
-                loadProduk();     // Update Stok di Menu Produk & Kasir
-                loadKeuangan();   // Update Tabel Keuangan (Masuk/Keluar uang refund)
-            }, 500); // Beri jeda sedikit agar database server selesai update
+                loadDashboard();
+                loadProduk();
+                loadKeuangan();
+            }, 500);
             
         }).prosesReturBaru(payload);
     });
@@ -5431,6 +5444,98 @@ function cetakSlipPiutang(idTrx, pelanggan, total, jatuhTempo, mode) {
         .generatePdfFromHtml(fullHtml, fileName);
 }
 
+// --- FUNGSI CETAK INVOICE RETUR ---
+function cetakInvoiceRetur(payload, totalRefund) {
+    const areaCetak = document.getElementById('area-cetak');
+    const tglSekarang = new Date().toLocaleString('id-ID');
+    const namaPelanggan = currentReturData ? currentReturData.pelanggan : 'Pelanggan';
+    
+    // Header
+    const namaPT = globalCompanyProfile.nama_perusahaan || 'NAMA PERUSAHAAN';
+    const noPT = globalCompanyProfile.no_perusahaan || '-';
+    let htmlLogo = '';
+    if(globalCompanyProfile.logo_perusahaan) {
+        htmlLogo = `<img src="${globalCompanyProfile.logo_perusahaan}" style="height: 50px; width: auto; margin-right: 15px;">`;
+    }
+
+    // List Barang Retur
+    let rowsBarang = '';
+    payload.items.forEach(item => {
+        if(item.qtyRetur > 0) {
+            rowsBarang += `
+            <tr>
+                <td class="text-start">${item.produk}<br><small class="text-muted fst-italic">Retur: ${item.alasan || 'Refund'}</small></td>
+                <td>${rupiah(item.hargaSatuan)}</td>
+                <td>${item.qtyRetur}</td>
+                <td class="text-end fw-bold">-${rupiah(item.hargaSatuan * item.qtyRetur)}</td>
+            </tr>`;
+        }
+    });
+
+    const html = `
+    <div class="h-100" style="font-family: sans-serif; padding: 10px;">
+        <div class="d-flex justify-content-between border-bottom border-2 border-danger pb-2 mb-2">
+            <div class="d-flex align-items-center">
+                ${htmlLogo}
+                <div>
+                    <h4 class="fw-bold text-danger m-0 text-uppercase" style="font-size:16pt;">${namaPT}</h4>
+                    <small class="text-muted fw-bold">BUKTI RETUR / REFUND</small>
+                </div>
+            </div>
+            <div class="text-end">
+                <h4 class="fw-bold text-dark">NOTA RETUR</h4>
+                <div style="font-size:9pt">${tglSekarang}</div>
+                <div class="text-danger fw-bold" style="font-size:10pt">REF: ${payload.idTrx}</div>
+            </div>
+        </div>
+
+        <div class="row mb-2" style="font-size:10pt">
+            <div class="col-6">
+                <small class="text-muted fw-bold">CUSTOMER:</small><br>
+                <strong class="text-dark fs-6">${namaPelanggan}</strong>
+            </div>
+            <div class="col-6 text-end">
+                <small class="text-muted fw-bold">KETERANGAN:</small><br>
+                <strong>${payload.alasan || 'Pengembalian Barang'}</strong>
+            </div>
+        </div>
+
+        <table class="table table-bordered border-dark mb-0 table-sm" style="border-color: #000 !important; font-size:10pt;">
+            <thead class="bg-light text-center">
+                <tr><th>Barang Retur</th><th>Harga</th><th>Qty</th><th>Refund</th></tr>
+            </thead>
+            <tbody class="text-center">${rowsBarang}</tbody>
+            <tfoot class="fw-bold">
+                <tr>
+                    <td colspan="3" class="text-end pe-2">TOTAL PENGEMBALIAN DANA</td>
+                    <td class="text-end bg-danger-subtle text-danger">-${rupiah(totalRefund)}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <div class="row mt-4 align-items-end" style="page-break-inside: avoid;">
+            <div class="col-6 text-center">
+                <small>Pelanggan,</small>
+                <br><br><br>
+                <small class="fw-bold">( ${namaPelanggan} )</small>
+            </div>
+            <div class="col-6 text-center">
+                <small>Petugas / Kasir,</small>
+                <br><br><br>
+                <small class="fw-bold">( Admin )</small>
+            </div>
+        </div>
+        
+        <div class="mt-3 text-center">
+            <small class="fst-italic text-muted" style="font-size:8pt">Dokumen ini adalah bukti sah pengembalian barang & dana.</small>
+        </div>
+    </div>
+    `;
+
+    areaCetak.innerHTML = html;
+    new bootstrap.Modal(document.getElementById('modalInvoice')).show();
+}
+
 // [UPDATE PERBAIKAN] Laporan PDF dengan Gambar Aman (Anti Crash)
 // [UPDATE PERBAIKAN] Laporan PDF dengan Gambar Aman & Smart Column Removal
 function printLaporanPDF(tableId, judulLaporan) {
@@ -5525,51 +5630,44 @@ function printLaporanPDF(tableId, judulLaporan) {
 }
 
 // --- FUNGSI CETAK NOTA KEUANGAN (A5 LANDSCAPE + 3 TANDA TANGAN) ---
-function cetakNotaKeuangan(data) {
+// [JAVASCRIPT.HTML]
+// Cari fungsi cetakNotaKeuangan(data) dan GANTI isinya dengan yang bersih ini:
 
-    const table = document.getElementById(tableId);
-    
-    // 1. Setup Nama File
-    const tglFile = new Date().toISOString().slice(0,10);
-    const fileName = judulLaporan.replace(/\s+/g, '_') + '_' + tglFile;
-    
-    // 2. Ambil Profil Perusahaan
+function cetakNotaKeuangan(data) {
+    // --- [HAPUS BAGIAN ERROR INI] ---
+    // const table = document.getElementById(tableId);  <-- INI PENYEBAB ERROR
+    // const tglFile = new Date().toISOString().slice(0,10);
+    // const fileName = judulLaporan.replace(/\s+/g, '_') + '_' + tglFile; <-- INI JUGA ERROR
+    // --------------------------------
+
+    // 1. Ambil Profil Perusahaan
     const namaPT = globalCompanyProfile.nama_perusahaan || 'NAMA PERUSAHAAN';
     const alamatPT = globalCompanyProfile.alamat || '-';
     const noPT = globalCompanyProfile.no_perusahaan || '-';
     const logoUrl = globalCompanyProfile.logo_perusahaan || '';
     
-    // --- [LOGIKA BARU UNTUK GAMBAR] ---
-    let logoId = null;
+    // --- [LOGIKA GAMBAR] ---
     let htmlLogo = '';
-    
-    // Ekstrak ID dari URL Logo yang tersimpan
-    // URL biasanya format: https://drive.google.com/uc?export=view&id=123abc...
+    // Jika ada logo, tampilkan
     if (globalCompanyProfile.logo_perusahaan) {
-        // Coba cari pola ID=...
-        const match = globalCompanyProfile.logo_perusahaan.match(/id=([^&]+)/);
-        if (match) {
-            logoId = match[1]; // Dapat ID-nya saja (misal: 123abc...)
-            
-            // Pasang PLACEHOLDER (Penanda) di HTML
-            // Nanti server yang akan mengganti "[[LOGO_IMAGE_PLACEHOLDER]]" dengan gambar asli
-            htmlLogo = `<img src="[[LOGO_IMAGE_PLACEHOLDER]]" style="height: 80px; width: auto; margin-right: 20px;">`;
-        }
+        // Kita gunakan placeholder agar nanti bisa diganti gambar base64 jika pakai PDF, 
+        // tapi untuk window.print() langsung pakai URL saja agar muncul gambarnya.
+        htmlLogo = `<img src="${globalCompanyProfile.logo_perusahaan}" style="height: 80px; width: auto; margin-right: 20px;">`;
     }
 
     // 2. Tentukan Judul, Warna & Label Tanda Tangan Ketiga
     let judulDokumen = '';
     let warnaHeader = '';
-    let labelPihakKetiga = ''; // <--- Variabel Baru
+    let labelPihakKetiga = ''; 
     
     if (data.jenis === 'Pemasukan') {
         judulDokumen = 'BUKTI KAS MASUK';
         warnaHeader = '#198754'; // Hijau
-        labelPihakKetiga = 'Penyetor / Pelanggan'; // Orang yang ngasih duit
+        labelPihakKetiga = 'Penyetor / Pelanggan'; 
     } else {
         judulDokumen = 'BUKTI KAS KELUAR';
         warnaHeader = '#dc3545'; // Merah
-        labelPihakKetiga = 'Penerima Uang'; // Orang yang terima duit
+        labelPihakKetiga = 'Penerima Uang'; 
     }
 
     // Format Tanggal
@@ -5584,84 +5682,54 @@ function cetakNotaKeuangan(data) {
         <title>Cetak Nota - ${data.id}</title>
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-            
-            @page { 
-                size: A5 landscape; 
-                margin: 0; 
-            }
-
+            @page { size: A5 landscape; margin: 0; }
             body { 
                 font-family: 'Roboto', sans-serif; 
-                padding: 10mm; 
-                margin: 0;
+                padding: 10mm; margin: 0;
                 color: #333; 
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact; print-color-adjust: exact;
                 background-color: white;
             }
-            
             .container { 
-                border: 2px solid #333; 
-                padding: 20px; 
-                width: 100%; 
-                height: 100%; 
-                box-sizing: border-box; 
-                position: relative; 
+                border: 2px solid #333; padding: 20px; 
+                width: 100%; height: 100%; 
+                box-sizing: border-box; position: relative; 
             }
-            
             .header { 
-                display: flex; 
-                align-items: center; 
-                border-bottom: 2px solid #333; 
-                padding-bottom: 10px; 
-                margin-bottom: 15px; 
+                display: flex; align-items: center; 
+                border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; 
             }
             .header-text h2 { margin: 0; font-size: 18px; color: #333; text-transform: uppercase; }
             .header-text p { margin: 0; font-size: 10px; color: #555; }
-            
             .judul-nota { 
                 text-align: center; font-size: 16px; font-weight: bold; 
                 background-color: ${warnaHeader}; color: white; 
                 padding: 5px; margin-bottom: 15px; border-radius: 4px; letter-spacing: 1px;
-                -webkit-print-color-adjust: exact;
             }
-
             .row-content { display: flex; gap: 20px; }
             .col-left { flex: 1; }
             .col-right { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-
             .info-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
             .info-table td { padding: 4px 5px; vertical-align: top; font-size: 12px; } 
             .label { font-weight: bold; width: 120px; color: #555; }
             .separator { width: 10px; }
             .isi { border-bottom: 1px dotted #ccc; font-weight: 500; }
-            
             .nominal-box { 
                 background: #f8f9fa; border: 2px dashed ${warnaHeader}; 
                 padding: 10px 30px; font-size: 22px; font-weight: bold; 
                 color: ${warnaHeader}; display: inline-block; margin-top: 5px;
-                border-radius: 8px;
-                text-align: center;
+                border-radius: 8px; text-align: center;
             }
             .terbilang-label { font-size: 10px; color: #777; margin-top: 5px; }
-
-            /* --- UPDATED FOOTER (3 KOLOM) --- */
             .footer { 
-                display: flex; 
-                justify-content: space-between; /* Agar 3 kolom rata kiri-tengah-kanan */
-                margin-top: 25px; 
-                text-align: center; 
-                padding: 0 10px;
+                display: flex; justify-content: space-between; 
+                margin-top: 25px; text-align: center; padding: 0 10px;
             }
-            .ttd-box { width: 30%; } /* Lebar proporsional untuk 3 kolom */
+            .ttd-box { width: 30%; }
             .ttd-line { border-bottom: 1px solid #000; margin-top: 50px; font-weight: bold; font-size: 12px;}
-            
             .timestamp {
-                position: absolute;
-                bottom: 5px;
-                left: 0; right: 0;
-                font-size: 8px; color: #999; 
-                text-align: center;
+                position: absolute; bottom: 5px; left: 0; right: 0;
+                font-size: 8px; color: #999; text-align: center;
             }
         </style>
     </head>
@@ -5681,25 +5749,12 @@ function cetakNotaKeuangan(data) {
             <div class="row-content">
                 <div class="col-left">
                     <table class="info-table">
-                        <tr>
-                            <td class="label">No. Transaksi</td><td class="separator">:</td>
-                            <td class="isi">${data.id}</td>
-                        </tr>
-                        <tr>
-                            <td class="label">Tanggal</td><td class="separator">:</td>
-                            <td class="isi">${tglStr}</td>
-                        </tr>
-                        <tr>
-                            <td class="label">Kategori</td><td class="separator">:</td>
-                            <td class="isi">${data.kategori}</td>
-                        </tr>
-                        <tr>
-                            <td class="label">Keterangan</td><td class="separator">:</td>
-                            <td class="isi" style="font-style: italic;">"${data.ket}"</td>
-                        </tr>
+                        <tr><td class="label">No. Transaksi</td><td class="separator">:</td><td class="isi">${data.id}</td></tr>
+                        <tr><td class="label">Tanggal</td><td class="separator">:</td><td class="isi">${tglStr}</td></tr>
+                        <tr><td class="label">Kategori</td><td class="separator">:</td><td class="isi">${data.kategori}</td></tr>
+                        <tr><td class="label">Keterangan</td><td class="separator">:</td><td class="isi" style="font-style: italic;">"${data.ket}"</td></tr>
                     </table>
                 </div>
-
                 <div class="col-right">
                     <div class="terbilang-label">JUMLAH UANG</div>
                     <div class="nominal-box">${rupiah(data.nominal)}</div>
@@ -5707,27 +5762,14 @@ function cetakNotaKeuangan(data) {
             </div>
 
             <div class="footer">
-                <div class="ttd-box">
-                    <small>Disetujui Oleh,</small>
-                    <div class="ttd-line">( Pimpinan / Owner )</div>
-                </div>
-                <div class="ttd-box">
-                    <small>Dibuat Oleh,</small>
-                    <div class="ttd-line">( Admin Keuangan )</div>
-                </div>
-                <div class="ttd-box">
-                    <small>${labelPihakKetiga},</small>
-                    <div class="ttd-line">( ....................... )</div>
-                </div>
+                <div class="ttd-box"><small>Disetujui Oleh,</small><div class="ttd-line">( Pimpinan / Owner )</div></div>
+                <div class="ttd-box"><small>Dibuat Oleh,</small><div class="ttd-line">( Admin Keuangan )</div></div>
+                <div class="ttd-box"><small>${labelPihakKetiga},</small><div class="ttd-line">( ....................... )</div></div>
             </div>
             
-            <div class="timestamp">
-                Dicetak otomatis oleh Sistem SiGAS PRO pada ${new Date().toLocaleString('id-ID')}
-            </div>
+            <div class="timestamp">Dicetak otomatis oleh Sistem SiGAS PRO pada ${new Date().toLocaleString('id-ID')}</div>
         </div>
-
-        <script>
-            setTimeout(() => { window.print(); }, 2000);
+        <script>setTimeout(() => { window.print(); }, 1000);
         ` + '</sc' + 'ript>' + `
     </body>
     </html>
