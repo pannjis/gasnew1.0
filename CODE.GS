@@ -21,7 +21,7 @@ function setupDatabase() {
     {name: 'PRODUK', header: ['ID', 'Nama_Produk', 'Harga_Jual', 'Harga_Beli', 'Stok_Isi', 'Stok_Kosong', 'SKU', 'Kode', 'Link_Gambar', 'Harga_Beli_Tabung', 'Harga_Jual_Tabung', 'Harga_Jual_Refill_2', 'Harga_Jual_Refill_3', 'Harga_Jual_Tabung_2', 'Harga_Jual_Tabung_3']},
     {name: 'PELANGGAN', header: ['ID', 'Nama', 'Nama_Perusahan', 'NoHP', 'Alamat']},
     {name: 'SUPPLIER', header: ['ID', 'Nama_Supplier', 'NoHP', 'Alamat']},
-    {name: 'TRANSAKSI', header: ['ID_Trans', 'Waktu', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Tipe', 'Kasir', 'Metode_Bayar', 'Jatuh_Tempo', 'Status']},
+    {name: 'TRANSAKSI', header: ['ID_Trans', 'Waktu', 'Pelanggan', 'Produk', 'Qty', 'Total', 'Tipe', 'Kasir', 'Metode_Bayar', 'Jatuh_Tempo', 'Status', 'Qty_Retur']},
     {name: 'PEMBELIAN', header: ['ID_Beli', 'Waktu', 'Supplier', 'Produk', 'Qty', 'Total', 'Metode']},
     {name: 'KEUANGAN', header: ['ID', 'Tanggal', 'Jenis', 'Kategori', 'Nominal', 'Keterangan', 'Akun']}, 
     {name: 'KATEGORI', header: ['Nama_Kategori']},
@@ -408,10 +408,14 @@ function simpanTransaksiBulk(dataTransaksi) {
   const trxSheet = ss.getSheetByName('TRANSAKSI');
   const keuSheet = ss.getSheetByName('KEUANGAN');
   
-  // Pastikan Header TRANSAKSI punya kolom Diskon (Update Header Otomatis jika belum ada)
-  if (trxSheet.getLastColumn() < 12) {
-      trxSheet.getRange(1, 12).setValue('Diskon');
-  }
+  // Pastikan Header punya kolom Diskon
+if (trxSheet.getLastColumn() < 12) {
+    trxSheet.getRange(1, 12).setValue('Diskon');
+}
+// >>> TAMBAHKAN INI <<<
+if (trxSheet.getLastColumn() < 13) {
+    trxSheet.getRange(1, 13).setValue('Qty_Retur');
+}
    
   const prodData = prodSheet.getDataRange().getValues();
   const idTrxMaster = 'KBA-' + Date.now();
@@ -640,7 +644,11 @@ function getRiwayatTransaksi() {
       qty: row[4],
       hargaTotal: row[5],
       tipe: row[6],
-      status: row[10] // Index 10 = Status
+      status: row[10], // Index 10 = Status
+      
+      // >>> TAMBAHKAN BARIS DI BAWAH INI <<<
+      // Baca kolom 13 (Index 12) supaya HTML tahu ada retur 1 pcs
+      qtyRetur: row[12] 
     });
 
     grouped[id].totalBayar += Number(row[5]);
@@ -708,15 +716,20 @@ function prosesReturBaru(payload) {
               }
 
               // --- [BARU] UPDATE STATUS DI TRANSAKSI JADI 'Retur' ---
-              for(let r = 1; r < trxData.length; r++) {
-                  // Cek ID Transaksi (Kolom 0) dan Nama Produk (Kolom 3)
+                for(let r = 1; r < trxData.length; r++) {
+                    // ... di dalam loop for ...
                   if(trxData[r][0] == payload.idTrx && trxData[r][3] == returItem.produk) {
-                      // Kolom Status ada di Index 10 (Kolom K/11)
-                      // Kita tandai statusnya menjadi 'Retur'
-                      trxSheet.getRange(r+1, 11).setValue('Retur'); 
-                      break; // Stop loop jika ketemu
+                      
+                      // Update Status
+                      trxSheet.getRange(r+1, 11).setValue('Retur');
+                      
+                      // >>> TAMBAHKAN INI (Simpan Angka Retur) <<<
+                      // Simpan di Kolom 13 (M)
+                      trxSheet.getRange(r+1, 13).setValue(returItem.qtyRetur); 
+                      
+                      break; 
                   }
-              }
+                }
               // ------------------------------------------------------
 
            } else {
