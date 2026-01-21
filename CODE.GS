@@ -628,10 +628,10 @@ function getRiwayatTransaksi() {
         pelanggan: row[2],
         kasir: row[7],
         metode: row[8],        
-        jatuhTempo: row[9],    
+        jatuhTempo: row[9],  
         totalBayar: 0,  
         items: [],
-        diskonTotal: 0 // Penampung diskon
+        diskonTotal: 0 
       };
     }
     
@@ -640,22 +640,22 @@ function getRiwayatTransaksi() {
       qty: row[4],
       hargaTotal: row[5],
       tipe: row[6],
-      status: row[10]
+      status: row[10] // Index 10 = Status
     });
 
-    // Tambahkan harga item ke total
     grouped[id].totalBayar += Number(row[5]);
     
-    // [BARU] Cek kolom Diskon (Index 11 / Kolom L)
-    // Jika ada isinya, tambahkan ke diskonTotal
     if(row[11]) {
         grouped[id].diskonTotal += Number(row[11]);
     }
   });
-   
-  // Finalisasi: Kurangi Total Bayar dengan Diskon
+
   let result = Object.values(grouped).map(trx => {
       trx.totalBayar = trx.totalBayar - trx.diskonTotal;
+      
+      // [BARU] Cek apakah ada item yang statusnya 'Retur'
+      trx.isRetur = trx.items.some(item => String(item.status).toLowerCase().includes('retur'));
+      
       return trx;
   });
 
@@ -671,24 +671,24 @@ function prosesReturBaru(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const prodSheet = ss.getSheetByName('PRODUK');
   const keuSheet = ss.getSheetByName('KEUANGAN');
+  const trxSheet = ss.getSheetByName('TRANSAKSI'); // Tambahan: Load sheet Transaksi
    
-  const targetSheetName = payload.jenis === 'JUAL' ? 'TRANSAKSI' : 'PEMBELIAN';
   const prodData = prodSheet.getDataRange().getValues();
+  // Tambahan: Ambil data transaksi untuk pencarian baris
+  const trxData = trxSheet.getDataRange().getValues();
 
   let totalRefund = 0;
-  let totalHPPRetur = 0; // Variabel baru untuk menampung total modal yang balik
+  let totalHPPRetur = 0;
   
   // Loop item yang diretur
   payload.items.forEach(returItem => {
     if(returItem.qtyRetur > 0) {
       
-      // UPDATE STOK PRODUK
+      // 1. UPDATE STOK PRODUK
       for (let i = 1; i < prodData.length; i++) {
         if (prodData[i][1] == returItem.produk) {
            let curIsi = Number(prodData[i][4]);
            let curKosong = Number(prodData[i][5]);
-           
-           // Ambil Data HPP (Modal) saat ini
            let hppIsi = Number(prodData[i][3]) || 0;
            let hppTabung = Number(prodData[i][9]) || 0;
            
@@ -698,20 +698,29 @@ function prosesReturBaru(payload) {
               
               if(returItem.tipe && returItem.tipe.includes('Refill')) {
                  prodSheet.getRange(i+1, 6).setValue(curKosong - returItem.qtyRetur);
-                 // Kalau Refill, yang balik cuma modal isi
                  totalHPPRetur += (hppIsi * returItem.qtyRetur);
               } else {
-                 // Kalau Tabung Baru/Full, modal isi + modal tabung
-                 // Asumsi tipe selain refill mengandung komponen tabung, atau cek nama
                  if(returItem.tipe && returItem.tipe.toLowerCase().includes('baru')) {
                      totalHPPRetur += ((hppIsi + hppTabung) * returItem.qtyRetur);
                  } else {
-                     totalHPPRetur += (hppIsi * returItem.qtyRetur); // Default ke isi
+                     totalHPPRetur += (hppIsi * returItem.qtyRetur);
                  }
               }
 
+              // --- [BARU] UPDATE STATUS DI TRANSAKSI JADI 'Retur' ---
+              for(let r = 1; r < trxData.length; r++) {
+                  // Cek ID Transaksi (Kolom 0) dan Nama Produk (Kolom 3)
+                  if(trxData[r][0] == payload.idTrx && trxData[r][3] == returItem.produk) {
+                      // Kolom Status ada di Index 10 (Kolom K/11)
+                      // Kita tandai statusnya menjadi 'Retur'
+                      trxSheet.getRange(r+1, 11).setValue('Retur'); 
+                      break; // Stop loop jika ketemu
+                  }
+              }
+              // ------------------------------------------------------
+
            } else {
-              // Retur Pembelian (Stok Berkurang)
+              // Retur Pembelian
               prodSheet.getRange(i+1, 5).setValue(curIsi - returItem.qtyRetur);
            }
            break;
@@ -725,7 +734,6 @@ function prosesReturBaru(payload) {
   // Catat ke Keuangan
   if(totalRefund > 0) {
      if(payload.jenis === 'JUAL') {
-        // PERUBAHAN DISINI: Kita simpan totalHPPRetur di kolom ke-7 (Index G) agar bisa dibaca laporan
         keuSheet.appendRow([
             'RET-' + Date.now(), 
             new Date(), 
@@ -733,7 +741,7 @@ function prosesReturBaru(payload) {
             'Retur Penjualan', 
             totalRefund, 
             `Retur TRX: ${payload.idTrx}. ${payload.alasan}`,
-            totalHPPRetur // Simpan HPP disini
+            totalHPPRetur 
         ]);
      } else {
         keuSheet.appendRow([
@@ -1678,56 +1686,42 @@ function hitungHariKerja(tglMulai, tglSelesai) {
 // 11. DASHBOARD & REPORTING
 // ==========================================
 
+// [CODE.GS] UPDATE FUNGSI getDashboardRealtime
 function getDashboardRealtime(startStr, endStr) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-   
   let startDate, endDate;
-  const now = new Date();
-   
-  if (startStr && endStr) {
+  
+  if(startStr && endStr) {
     startDate = new Date(startStr);
-    startDate.setHours(0,0,0,0);
     endDate = new Date(endStr);
-    endDate.setHours(23,59,59,999);
+    endDate.setHours(23, 59, 59);
   } else {
-    startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-  }
-   
-  let mapDateIndex = {}; 
-  let chartLabels = [];
-  let chartSales = [];
-  let chartExpense = [];
-   
-  let loopDate = new Date(startDate);
-  let idx = 0;
-   
-  while(loopDate <= endDate) {
-    let key = Utilities.formatDate(loopDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
-    let label = Utilities.formatDate(loopDate, Session.getScriptTimeZone(), "dd/MM");
-     
-    mapDateIndex[key] = idx; 
-    chartLabels.push(label);
-    chartSales.push(0);
-    chartExpense.push(0);
-     
-    loopDate.setDate(loopDate.getDate() + 1);
-    idx++;
+    let now = new Date();
+    startDate = new Date(now.getFullYear(), now.getMonth(), 1); 
+    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59); 
   }
 
   let stats = {
-    totalPelanggan: 0, 
-    pesanan: 0,
     pendapatan: 0,
     pengeluaran: 0,
-    retur: 0,
-    qtyRefill: 0,
+    labaBersih: 0,
+    pesanan: 0,
+    totalPelanggan: 0,
     produkTerjual: {},
+    chartSales: new Array(31).fill(0),
+    chartExpense: new Array(31).fill(0),
+    qtyRefill: 0,
     rataRataTransaksi: 0,
-    chartLabels: chartLabels,
-    chartSales: chartSales,
-    chartExpense: chartExpense
+    retur: 0 
   };
+  
+  // Helper mapping tanggal ke index array (0-30)
+  let mapDateIndex = {};
+  for(let i=0; i<=30; i++) {
+     let d = new Date(startDate);
+     d.setDate(d.getDate() + i);
+     let key = Utilities.formatDate(d, Session.getScriptTimeZone(), "yyyy-MM-dd");
+     mapDateIndex[key] = i;
+  }
 
   const rawTrx = getData('TRANSAKSI');
   const rawKeu = getData('KEUANGAN');
@@ -1736,66 +1730,73 @@ function getDashboardRealtime(startStr, endStr) {
 
   stats.totalPelanggan = rawPel.length;
 
-  // A. LOOP TRANSAKSI (BAGIAN INI DIPERBAIKI)
-  rawTrx.forEach(row => {
-      let tgl = new Date(row[1]); 
-      if(tgl >= startDate && tgl <= endDate) {
-          let produk = row[3];
-          let qty = Number(row[4]);
-          let total = Number(row[5]);
-          let tipe = row[6];
-          let status = row[10];
-          
-          // [BARU] Ambil Nilai Diskon dari Kolom L (Index 11)
-          let diskon = Number(row[11]) || 0; 
+  // A. LOOP TRANSAKSI
+  if (rawTrx && rawTrx.length > 0) {
+      rawTrx.forEach(row => {
+          let tgl = new Date(row[1]); 
+          if(tgl >= startDate && tgl <= endDate) {
+              let produk = row[3];
+              let qty = Number(row[4]) || 0;
+              let total = Number(row[5]) || 0;
+              let tipe = String(row[6]).toLowerCase();
+              let status = String(row[10]); // Ambil Status
 
-          if(!String(status).includes('Retur')) {
-              stats.pesanan++;
+              // [FIX PENTING] 
+              // Hapus pengecekan if(!status.includes('Retur')) 
+              // Agar transaksi yang statusnya 'Retur' TETAP DIHITUNG pemasukannya.
               
-              // [KOREKSI] Pendapatan Bersih = Total - Diskon
-              let pendapatanBersih = total - diskon;
-              stats.pendapatan += pendapatanBersih;
-              
-              if(!stats.produkTerjual[produk]) stats.produkTerjual[produk] = 0;
-              stats.produkTerjual[produk] += qty;
+              let diskon = (row[11]) ? Number(row[11]) : 0; 
+              if (isNaN(diskon)) diskon = 0;
 
-              if(tipe && tipe.toLowerCase().includes('refill')) {
-                 stats.qtyRefill += qty;
-              }
-              
-              let key = Utilities.formatDate(tgl, Session.getScriptTimeZone(), "yyyy-MM-dd");
-              if (mapDateIndex.hasOwnProperty(key)) {
-                 let i = mapDateIndex[key];
-                 // [KOREKSI] Chart juga pakai pendapatan bersih
-                 stats.chartSales[i] += pendapatanBersih;
+              // Kita hitung semua transaksi (kecuali jika ada status 'Batal' mungkin perlu di skip, tapi 'Retur' tetap hitung)
+              if(!status.toLowerCase().includes('batal')) {
+                  stats.pesanan++;
+                  
+                  let pendapatanBersih = total - diskon;
+                  stats.pendapatan += pendapatanBersih; // 52.500 tetap masuk sini
+                  
+                  if(!stats.produkTerjual[produk]) stats.produkTerjual[produk] = 0;
+                  stats.produkTerjual[produk] += qty;
+
+                  if(tipe && tipe.includes('refill')) {
+                    stats.qtyRefill += qty;
+                  }
+                  
+                  let key = Utilities.formatDate(tgl, Session.getScriptTimeZone(), "yyyy-MM-dd");
+                  if (mapDateIndex.hasOwnProperty(key)) {
+                    let i = mapDateIndex[key];
+                    stats.chartSales[i] += pendapatanBersih;
+                  }
               }
           }
-      }
-  });
+      });
+  }
 
-  // B. LOOP KEUANGAN (Sama)
-  rawKeu.forEach(row => {
-      let tgl = new Date(row[1]);
-      if(tgl >= startDate && tgl <= endDate) {
-         let jenis = row[2];
-         let kategori = row[3];
-         let nominal = Number(row[4]);
-         let key = Utilities.formatDate(tgl, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  // B. LOOP KEUANGAN
+  if (rawKeu && rawKeu.length > 0) {
+      rawKeu.forEach(row => {
+          let tgl = new Date(row[1]);
+          if(tgl >= startDate && tgl <= endDate) {
+            let jenis = row[2];
+            let kategori = String(row[3]).toLowerCase();
+            let nominal = Number(row[4]) || 0; 
+            let key = Utilities.formatDate(tgl, Session.getScriptTimeZone(), "yyyy-MM-dd");
 
-         if(jenis === 'Pengeluaran') {
-            stats.pengeluaran += nominal;
-            
-            if(kategori && kategori.toLowerCase().includes('retur')) {
-               stats.retur += nominal;
+            if(jenis === 'Pengeluaran') {
+                stats.pengeluaran += nominal; // 17.500 masuk sini sebagai pengurang
+                
+                if(kategori.includes('retur')) {
+                  stats.retur += nominal;
+                }
+
+                if (mapDateIndex.hasOwnProperty(key)) {
+                  let i = mapDateIndex[key];
+                  stats.chartExpense[i] += nominal;
+                }
             }
-
-            if (mapDateIndex.hasOwnProperty(key)) {
-               let i = mapDateIndex[key];
-               stats.chartExpense[i] += nominal;
-            }
-         }
-      }
-  });
+          }
+      });
+  }
 
   if(stats.pesanan > 0) {
       stats.rataRataTransaksi = stats.pendapatan / stats.pesanan;
