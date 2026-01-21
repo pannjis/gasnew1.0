@@ -774,12 +774,6 @@
                       <label class="fw-bold small text-muted">No. Faktur</label>
                       <input type="text" id="beli-noFaktur" class="form-control bg-light" placeholder="Contoh: INV-001">
                     </div>
-                    <div class="mb-2">
-                        <label class="fw-bold small text-muted">Bayar Pakai (Sumber Dana)</label>
-                        <select id="beli-akunBayar" class="form-select bg-light border-0 fw-bold text-dark">
-                          <option value="">Memuat Akun...</option>
-                        </select>
-                    </div>
                   </div>
                   <div class="card bg-light p-3 border-0 mb-3">
                   <div class="mb-2 position-relative">
@@ -2821,6 +2815,41 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
         <button type="button" class="btn btn-primary fw-bold px-4" onclick="tambahItemKeDraft()">TAMBAH KE LIST</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="modalBayarBeli" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title fw-bold">
+          <i class="material-icons align-middle me-1">payment</i> Pembayaran Stok
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        
+        <div class="mb-3 text-center">
+          <label class="form-label text-muted small">Total Pembelian (Otomatis)</label>
+          <div class="fs-2 fw-bold text-dark" id="modal-beli-total-show">Rp 0</div>
+          <input type="hidden" id="modal-beli-total-raw"> </div>
+
+        <div class="mb-3">
+            <label class="form-label fw-bold">Pilih Sumber Dana (Akun)</label>
+            <select class="form-select form-select-lg bg-light" id="modal-beli-akun">
+               <option value="">-- Pilih Akun --</option>
+               </select>
+            <div class="form-text">Saldo akan berkurang dari akun yang dipilih.</div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+        <button type="button" class="btn btn-primary fw-bold px-4" onclick="konfirmasiSimpanBeli()">
+           SIMPAN & BAYAR
+        </button>
       </div>
     </div>
   </div>
