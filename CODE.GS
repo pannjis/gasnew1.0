@@ -328,6 +328,8 @@ function tambahProduk(form) {
 
   // [FIX] formObject -> form
   catatLog("PRODUK_BARU", "Menambah produk: " + form.nama + " | Stok Awal: " + form.stokIsi);
+
+  SpreadsheetApp.flush();
 }
 
 function updateProduk(form) {
@@ -396,6 +398,8 @@ function hapusProduk(nama) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][1] == nama) { sheet.deleteRow(i + 1); break; }
   }
+
+  SpreadsheetApp.flush();
 }
 
 // ==========================================
@@ -648,7 +652,7 @@ function getRiwayatTransaksi() {
       
       // >>> TAMBAHKAN BARIS DI BAWAH INI <<<
       // Baca kolom 13 (Index 12) supaya HTML tahu ada retur 1 pcs
-      qtyRetur: row[12] 
+      qtyRetur: row[11]
     });
 
     grouped[id].totalBayar += Number(row[5]);
@@ -725,7 +729,17 @@ function prosesReturBaru(payload) {
                       
                       // >>> TAMBAHKAN INI (Simpan Angka Retur) <<<
                       // Simpan di Kolom 13 (M)
-                      trxSheet.getRange(r+1, 13).setValue(returItem.qtyRetur); 
+                      // Ambil data Qty Retur yang sudah ada sebelumnya (Kolom L ada di index 11 dlm array)
+                      let qtySudahRetur = trxData[r][11]; 
+
+                      // Pastikan nilainya angka
+                      if (qtySudahRetur === "" || qtySudahRetur == null) qtySudahRetur = 0;
+
+                      // Jumlahkan Lama + Baru
+                      let totalRetur = parseInt(qtySudahRetur) + parseInt(returItem.qtyRetur);
+
+                      // Simpan Total Akumulasi ke Kolom L (12)
+                      trxSheet.getRange(r+1, 12).setValue(totalRetur);
                       
                       break; 
                   }
@@ -863,7 +877,7 @@ function simpanPembelianBulk(data) {
         let curKosong = Number(prodData[i][5]) || 0;    
         
         let qtyBeli = Number(item.qty);
-        let hargaBeliBaru = Number(item.hargaSatuan);   
+        let hargaBeliBaru = Number(item.hargaSatuan || item.harga || 0);   
 
         let nilaiAsetLama = curIsi * curHargaBeli;
         let nilaiAsetBaru = qtyBeli * hargaBeliBaru;
