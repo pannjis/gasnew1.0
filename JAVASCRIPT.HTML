@@ -5507,16 +5507,25 @@ function cetakInvoiceRetur(payload, totalRefund) {
     }
 
     // List Barang Retur
+// List Barang Retur
     let rowsBarang = '';
     payload.items.forEach(item => {
         if(item.qtyRetur > 0) {
+            
+            // --- [PERBAIKAN] HITUNG HARGA SATUAN OTOMATIS ---
+            let hargaSatuan = item.hargaSatuan;
+            
+            // Jika hargaSatuan tidak ada (dari riwayat), hitung manual: Total / Qty Awal
+            if (!hargaSatuan && item.qty > 0) {
+                hargaSatuan = item.hargaTotal / item.qty;
+            }
+            // ------------------------------------------------
+
             rowsBarang += `
             <tr>
                 <td class="text-start">${item.produk}<br><small class="text-muted fst-italic">Retur: ${item.alasan || 'Refund'}</small></td>
-                <td>${rupiah(item.hargaSatuan)}</td>
-                <td>${item.qtyRetur}</td>
-                <td class="text-end fw-bold">-${rupiah(item.hargaSatuan * item.qtyRetur)}</td>
-            </tr>`;
+                <td>${rupiah(hargaSatuan)}</td>  <td>${item.qtyRetur}</td>
+                <td class="text-end fw-bold">-${rupiah(hargaSatuan * item.qtyRetur)}</td> </tr>`;
         }
     });
 
