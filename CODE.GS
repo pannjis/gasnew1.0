@@ -666,19 +666,19 @@ function getRiwayatTransaksi() {
 // 6. RETUR & HAPUS
 // ==========================================
 
+// [CODE.GS] Cari fungsi ini dan ganti isinya
 function prosesReturBaru(payload) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const prodSheet = ss.getSheetByName('PRODUK');
   const keuSheet = ss.getSheetByName('KEUANGAN');
    
   const targetSheetName = payload.jenis === 'JUAL' ? 'TRANSAKSI' : 'PEMBELIAN';
-  const trxSheet = ss.getSheetByName(targetSheetName);
-  const trxData = trxSheet.getDataRange().getValues();
   const prodData = prodSheet.getDataRange().getValues();
 
   let totalRefund = 0;
-  let logItem = [];
-
+  let totalHPPRetur = 0; // Variabel baru untuk menampung total modal yang balik
+  
+  // Loop item yang diretur
   payload.items.forEach(returItem => {
     if(returItem.qtyRetur > 0) {
       
@@ -688,12 +688,30 @@ function prosesReturBaru(payload) {
            let curIsi = Number(prodData[i][4]);
            let curKosong = Number(prodData[i][5]);
            
+           // Ambil Data HPP (Modal) saat ini
+           let hppIsi = Number(prodData[i][3]) || 0;
+           let hppTabung = Number(prodData[i][9]) || 0;
+           
            if(payload.jenis === 'JUAL') {
+              // Balikin Stok
               prodSheet.getRange(i+1, 5).setValue(curIsi + returItem.qtyRetur);
+              
               if(returItem.tipe && returItem.tipe.includes('Refill')) {
                  prodSheet.getRange(i+1, 6).setValue(curKosong - returItem.qtyRetur);
+                 // Kalau Refill, yang balik cuma modal isi
+                 totalHPPRetur += (hppIsi * returItem.qtyRetur);
+              } else {
+                 // Kalau Tabung Baru/Full, modal isi + modal tabung
+                 // Asumsi tipe selain refill mengandung komponen tabung, atau cek nama
+                 if(returItem.tipe && returItem.tipe.toLowerCase().includes('baru')) {
+                     totalHPPRetur += ((hppIsi + hppTabung) * returItem.qtyRetur);
+                 } else {
+                     totalHPPRetur += (hppIsi * returItem.qtyRetur); // Default ke isi
+                 }
               }
+
            } else {
+              // Retur Pembelian (Stok Berkurang)
               prodSheet.getRange(i+1, 5).setValue(curIsi - returItem.qtyRetur);
            }
            break;
@@ -701,18 +719,35 @@ function prosesReturBaru(payload) {
       }
 
       totalRefund += (returItem.hargaSatuan * returItem.qtyRetur);
-      logItem.push(`${returItem.produk} (x${returItem.qtyRetur})`);
     }
   });
 
+  // Catat ke Keuangan
   if(totalRefund > 0) {
      if(payload.jenis === 'JUAL') {
-        keuSheet.appendRow(['RET-' + Date.now(), new Date(), 'Pengeluaran', 'Retur Penjualan', totalRefund, `Retur TRX: ${payload.idTrx}. ${payload.alasan}`]);
+        // PERUBAHAN DISINI: Kita simpan totalHPPRetur di kolom ke-7 (Index G) agar bisa dibaca laporan
+        keuSheet.appendRow([
+            'RET-' + Date.now(), 
+            new Date(), 
+            'Pengeluaran', 
+            'Retur Penjualan', 
+            totalRefund, 
+            `Retur TRX: ${payload.idTrx}. ${payload.alasan}`,
+            totalHPPRetur // Simpan HPP disini
+        ]);
      } else {
-        keuSheet.appendRow(['RET-' + Date.now(), new Date(), 'Pemasukan', 'Retur Pembelian', totalRefund, `Retur BELI: ${payload.idTrx}. ${payload.alasan}`]);
+        keuSheet.appendRow([
+            'RET-' + Date.now(), 
+            new Date(), 
+            'Pemasukan', 
+            'Retur Pembelian', 
+            totalRefund, 
+            `Retur BELI: ${payload.idTrx}. ${payload.alasan}`
+        ]);
      }
   }
 
+  SpreadsheetApp.flush(); 
   return "Retur Berhasil Diproses!";
 }
 
@@ -757,8 +792,9 @@ function prosesRetur(idTrx, produkNama, qty, tipe, mode) {
       'Pengeluaran', 'Retur Penjualan', 
       nominalRefund, `Retur: ${produkNama} (${idTrx})`
   ]);
-
   catatLog("HAPUS_TRANSAKSI", "Menghapus Transaksi ID: " + idTrx);
+
+  SpreadsheetApp.flush(); // Tambahkan ini
 
   return "Berhasil Retur/Hapus";
 }
@@ -1063,6 +1099,7 @@ function hapusKeuangan(id) {
   throw new Error("ID tidak ditemukan");
 }
 
+// [CODE.GS] Cari fungsi ini dan update bagian Loop Pengeluaran
 function getLaporanDetail(startStr, endStr) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
    
@@ -1072,7 +1109,7 @@ function getLaporanDetail(startStr, endStr) {
   const prodData = getData('PRODUK');
   const trxData = getData('TRANSAKSI');
   const keuData = getData('KEUANGAN');
-   
+
   let laporan = {
     pendapatan: 0,
     hpp: 0,
@@ -1087,91 +1124,96 @@ function getLaporanDetail(startStr, endStr) {
     listPengeluaran: []
   };
 
-  // 1. MAPPING DATA PRODUK (Sama)
+  // 1. MAPPING DATA PRODUK (Tetap sama)
   let mapProduk = {};
   prodData.forEach(p => {
     let hppIsi = Number(p[3]) || 0;
     let hppTabung = Number(p[9]) || 0;
     let stokIsi = Number(p[4]) || 0;
     let stokKosong = Number(p[5]) || 0;
-
+    
     mapProduk[p[1]] = { hppIsi: hppIsi, hppTabung: hppTabung, stokIsi: stokIsi };
     
     let nilaiCangkang = (stokIsi + stokKosong) * hppTabung;
     let nilaiIsi = stokIsi * hppIsi;
-
+    
     laporan.asetFisik += nilaiCangkang;
     laporan.asetDagang += nilaiIsi;
     laporan.nilaiStok += (nilaiCangkang + nilaiIsi);
   });
 
-  // 2. HITUNG TRANSAKSI (BAGIAN INI DIPERBAIKI)
+  // 2. HITUNG TRANSAKSI (Tetap sama)
   trxData.forEach(row => {
     let tgl = new Date(row[1]);
     if (tgl >= startDate && tgl <= endDate) {
-        let produk = row[3];
+        let produk = row[3]; 
         let qty = Number(row[4]);
-        let totalJual = Number(row[5]);
-        let tipe = String(row[6]).toLowerCase(); 
-        let status = row[10];
+        let total = Number(row[5]);
+        let tipe = String(row[6]).toLowerCase();
         
-        // [BARU] Ambil Diskon dari Kolom L (Index 11)
-        let diskon = Number(row[11]) || 0;
-
-        if(!String(status).includes('Retur')) {
-            
-            // [KOREKSI] Pendapatan dihitung Bersih (Net Sales)
-            let penjualanBersih = totalJual - diskon;
-            laporan.pendapatan += penjualanBersih;
-
-            // Hitung HPP (Modal)
-            let infoProd = mapProduk[produk];
-            if(infoProd) {
-                let modalSatuan = 0;
-                if (tipe.includes('kosong')) {
-                    modalSatuan = infoProd.hppTabung;
-                } else if (tipe.includes('baru') || (tipe.includes('isi') && tipe.includes('wadah'))) {
-                    modalSatuan = infoProd.hppIsi + infoProd.hppTabung;
-                } else {
-                    modalSatuan = infoProd.hppIsi;
-                }
-                laporan.hpp += (qty * modalSatuan);
+        let hppSatuan = 0;
+        if(mapProduk[produk]) {
+            if(tipe.includes('baru')) {
+                hppSatuan = mapProduk[produk].hppIsi + mapProduk[produk].hppTabung;
+            } else {
+                hppSatuan = mapProduk[produk].hppIsi;
             }
-
-            // Hitung Metode Bayar (Pakai nilai bersih juga agar klop)
-            let metode = row[8];
-            if(!laporan.metodeBayar[metode]) laporan.metodeBayar[metode] = 0;
-            laporan.metodeBayar[metode] += penjualanBersih;
         }
+        
+        laporan.pendapatan += total;
+        laporan.hpp += (hppSatuan * qty);
+
+        // Hitung Metode Bayar
+        let metode = row[8];
+        if(!laporan.metodeBayar[metode]) laporan.metodeBayar[metode] = 0;
+        laporan.metodeBayar[metode] += total;
     }
   });
 
-  // 3. HITUNG PENGELUARAN (Sama)
+// 3. HITUNG PENGELUARAN & RETUR
   keuData.forEach(row => {
-      let tgl = new Date(row[1]);
-      if (tgl >= startDate && tgl <= endDate) {
-          if (row[2] === 'Pengeluaran') {
-             if (row[3] === 'Pembelian Stok') {
-                 laporan.pembelian += Number(row[4]);
-             } else if (row[3] !== 'Retur Penjualan') {
-                 laporan.pengeluaran += Number(row[4]);
-                 laporan.listPengeluaran.push({
-                    id: row[0], tanggal: row[1], kategori: row[3], ket: row[5], jumlah: Number(row[4])
-                 });
-             }
-          }
+    let tgl = new Date(row[1]);
+    if (tgl >= startDate && tgl <= endDate) {
+      
+      // LOGIKA BARU DISINI
+      if (row[3] === 'Retur Penjualan') {
+         // Jangan masukkan ke 'pengeluaran', tapi kurangi Pendapatan & HPP
+         let nilaiRefund = Number(row[4]) || 0;
+         let nilaiHPPRetur = Number(row[6]) || 0; // Ambil dari kolom baru tadi
+         
+         laporan.pendapatan -= nilaiRefund; // Omzet berkurang
+         laporan.hpp -= nilaiHPPRetur;      // HPP (Modal) berkurang karena barang balik
+         
+         // Opsional: Jika ingin mencatat history retur di list, bisa dibuat array terpisah
+         // Tapi jangan ditambahkan ke laporan.pengeluaran agar Laba Bersih benar.
+
+      } else if (row[2] === 'Pengeluaran') {
+        // Pengeluaran Normal (Listrik, Gaji, dll) & Pembelian Stok
+        if (row[3] === 'Pembelian Stok') {
+           laporan.pembelian += Number(row[4]);
+        } else {
+           laporan.pengeluaran += Number(row[4]);
+           laporan.listPengeluaran.push({
+              id: row[0],
+              tanggal: row[1],
+              kategori: row[3],
+              ket: row[5],
+              jumlah: Number(row[4])
+           });
+        }
       }
+    }
   });
 
   // 4. HITUNG LABA
-  // Karena laporan.pendapatan sudah dikurangi diskon di atas, maka Laba Kotor otomatis benar
+  // Sekarang laba kotor akan akurat (Omzet Bersih - HPP Bersih)
   laporan.labaKotor = laporan.pendapatan - laporan.hpp;
   laporan.labaBersih = laporan.labaKotor - laporan.pengeluaran;
+
   laporan.daftarAkun = getDaftarAkun();
 
   return laporan;
 }
-
 // ==========================================
 // 10. KARYAWAN & PAYROLL
 // ==========================================
