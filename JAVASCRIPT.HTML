@@ -1,6 +1,7 @@
 <script>
   let salesChartInstance = null;
   let pieChartInstance = null;
+  let globalLaporanData = {};
   let currentUser = {};
   let globalCompanyProfile = {};
   let globalListPelanggan = [];
@@ -6416,16 +6417,20 @@ function cetakSlipGaji(data) {
 
 // --- LOGIKA LAPORAN BARU ---
 
+// [JAVASCRIPT.HTML] Cari fungsi loadLaporanUtama
 function loadLaporanUtama() {
     const start = document.getElementById('lap-start').value;
     const end = document.getElementById('lap-end').value;
     
-    if(!start || !end) return; // Tunggu date terisi
+    if(!start || !end) return; 
 
     loading(true);
     google.script.run.withSuccessHandler(data => {
         loading(false);
-        renderLaporanUI(data);
+        
+        globalLaporanData = data; // <--- SIMPAN DATA MENTAH DISINI
+        
+        renderLaporanUI(data);    // Lanjut tampilkan ke layar
     }).getLaporanDetail(start, end);
 }
 
@@ -6502,16 +6507,26 @@ function loadLaporanSaldo() {
 function renderLaporanUI(data) {
     const rp = (n) => new Intl.NumberFormat('id-ID', {style: 'currency', currency: 'IDR', minimumFractionDigits:0}).format(n);
 
+    // Hitung Total Pengeluaran GABUNGAN untuk Tampilan Layar
+    // (Biaya Listrik/Gaji + Uang Refund Retur)
+    let totalBebanDisplay = (data.pengeluaran || 0) + (data.totalRetur || 0);
+
     // 1. ISI KARTU UTAMA
     document.getElementById('lap-pendapatan').innerText = rp(data.pendapatan);
     document.getElementById('lap-hpp').innerText = rp(data.hpp);
     document.getElementById('lap-kotor').innerText = rp(data.labaKotor);
-    document.getElementById('lap-beban').innerText = rp(data.pengeluaran);
+    
+    // TAMPILKAN GABUNGAN DI SINI
+    document.getElementById('lap-beban').innerText = rp(totalBebanDisplay); 
+    
     document.getElementById('lap-bersih').innerText = rp(data.labaBersih);
-    document.getElementById('lap-beli').innerText = rp(data.pembelian);
+    document.getElementById('lap-beli').innerText = rp(data.pembelian)
     
     // --- UPDATE BAGIAN ASET (LEBIH DETAIL) ---
     const elStok = document.getElementById('lap-stok');
+
+    // 2. ISI TABEL PENGELUARAN (Tampilkan gabungan juga di header tabel)
+    document.getElementById('lap-beban-total').innerText = rp(totalBebanDisplay);
     
     // Kita ubah isinya jadi HTML agar bisa ada baris baru
     elStok.innerHTML = `
@@ -6624,6 +6639,7 @@ function exportLaporanExcel() {
 
 // --- FUNGSI CETAK LAPORAN PROFESIONAL (A4) ---
 // [REVISI PRO] Export PDF Laporan Keuangan (Gaya Profesional - Clean Black & White)
+// [JAVASCRIPT.HTML] Update Fungsi Cetak PDF (FIXED VERSION)
 function printLaporanPDFCurrent() {
     // 1. Identifikasi Tab Aktif
     const isTabLabaAktif = document.getElementById('tab-laba').classList.contains('active');
@@ -6634,8 +6650,12 @@ function printLaporanPDFCurrent() {
     const namaPT = globalCompanyProfile.nama_perusahaan || 'NAMA PERUSAHAAN';
     const alamatPT = globalCompanyProfile.alamat || '-';
     
-    const tglStart = new Date(document.getElementById('lap-start').value).toLocaleDateString('id-ID');
-    const tglEnd = new Date(document.getElementById('lap-end').value).toLocaleDateString('id-ID');
+    // Tanggal Helper
+    const startVal = document.getElementById('lap-start').value;
+    const endVal = document.getElementById('lap-end').value;
+    const tglStart = startVal ? new Date(startVal).toLocaleDateString('id-ID') : '-';
+    const tglEnd = endVal ? new Date(endVal).toLocaleDateString('id-ID') : '-';
+
     let periodeStr = `Periode: ${tglStart} s/d ${tglEnd}`;
     let judulLaporan = '';
     let fileName = 'Laporan_Keuangan';
@@ -6660,18 +6680,66 @@ function printLaporanPDFCurrent() {
         judulLaporan = 'LAPORAN LABA RUGI';
         fileName = `Laba_Rugi_${tglStart}_${tglEnd}`;
         
-        // Ambil nilai tanpa class warna
-        const valPendapatan = document.getElementById('lap-pendapatan').innerText;
-        const valHPP = document.getElementById('lap-hpp').innerText;
-        const valKotor = document.getElementById('lap-kotor').innerText;
-        const valBeban = document.getElementById('lap-beban').innerText;
-        const valBersih = document.getElementById('lap-bersih').innerText;
-        const valStok = document.getElementById('lap-stok').innerText;
-        const valBeli = document.getElementById('lap-beli').innerText;
-        
-        // Tabel Metode Bayar (Kita ambil isinya saja, structure kita bangun ulang biar rapi)
-        const tabelMetodeHTML = document.getElementById('tabel-metode-bayar').innerHTML;
+        // Helper Format Rupiah
+        const rp = (n) => new Intl.NumberFormat('id-ID', {style: 'currency', currency: 'IDR', minimumFractionDigits:0}).format(n);
 
+        // Ambil data dari variable global
+        const data = globalLaporanData || {};
+        
+        const valPendapatan = rp(data.pendapatan || 0);
+        const valHPP = rp(data.hpp || 0);
+        const valKotor = rp(data.labaKotor || 0);
+        const valBersih = rp(data.labaBersih || 0);
+        const valRetur = data.totalRetur || 0; // Masih angka asli untuk logic
+
+        // --- GROUPING RINCIAN BIAYA OPERASIONAL ---
+        let detailOps = {};
+        let totalOps = 0;
+        let listItems = data.listPengeluaran || [];
+
+        // Loop & Filter (Pisahkan Retur dari Operasional)
+        listItems.forEach(item => {
+            if (item.kategori !== 'Retur Penjualan') {
+                if (!detailOps[item.kategori]) detailOps[item.kategori] = 0;
+                detailOps[item.kategori] += item.jumlah;
+                totalOps += item.jumlah;
+            }
+        });
+
+        // Buat HTML Rincian Biaya Ops
+        let htmlRincianOps = '';
+        if (Object.keys(detailOps).length > 0) {
+            // Header
+            htmlRincianOps += `
+                <tr>
+                    <td class="label-sub" style="padding-left: 20px; font-weight:bold;">Biaya Operasional</td>
+                    <td class="value-sub"></td> 
+                </tr>`;
+            // Isi
+            for (let [kat, jml] of Object.entries(detailOps)) {
+                htmlRincianOps += `
+                    <tr>
+                        <td class="label-sub" style="padding-left: 40px; font-size: 9pt;">- ${kat}</td>
+                        <td class="value-sub" style="font-size: 9pt;">(${rp(jml)})</td>
+                    </tr>`;
+            }
+        } else {
+             htmlRincianOps += `
+                <tr>
+                    <td class="label-sub" style="padding-left: 20px;">Biaya Operasional</td>
+                    <td class="value-sub">(${rp(0)})</td>
+                </tr>`;
+        }
+
+        // Total Pengeluaran (Ops + Retur)
+        let totalBebanSemua = totalOps + valRetur;
+        
+        // Data Bawah (Stok & Metode Bayar)
+        const valStok = rp(data.nilaiStok || 0);
+        const valBeli = rp(data.pembelian || 0);
+        const tabelMetodeHTML = document.getElementById('tabel-metode-bayar') ? document.getElementById('tabel-metode-bayar').innerHTML : '';
+
+        // SUSUN ULANG TAMPILAN PDF LABA RUGI
         kontenBody = `
             <table class="table-account" style="margin-top:20px;">
                 <tr>
@@ -6680,16 +6748,31 @@ function printLaporanPDFCurrent() {
                 </tr>
                 <tr>
                     <td class="label-sub" style="padding-left: 20px;">Harga Pokok Penjualan (HPP)</td>
-                    <td class="value-sub" style="color: #000;">(${valHPP})</td> </tr>
-                <tr class="row-total">
+                    <td class="value-sub" style="color: #000;">(${valHPP})</td> 
+                </tr>
+                <tr class="row-total" style="background-color:#f9f9f9;">
                     <td class="label-total">LABA KOTOR</td>
                     <td class="value-total">${valKotor}</td>
                 </tr>
+                
                 <tr>
-                    <td class="label-sub" style="padding-left: 20px; padding-top:15px;">Biaya Operasional & Pengeluaran</td>
-                    <td class="value-sub" style="padding-top:15px;">(${valBeban})</td>
+                    <td colspan="2" style="padding-top:15px; font-weight:bold; text-decoration:underline;">B. PENGELUARAN & BIAYA</td>
                 </tr>
-                <tr class="row-grand-total">
+                
+                ${htmlRincianOps}
+
+                ${valRetur > 0 ? `
+                <tr>
+                    <td class="label-sub" style="padding-left: 20px; color:#d32f2f; font-weight:bold;">Retur Penjualan (Refund)</td>
+                    <td class="value-sub" style="color: #d32f2f;">(${rp(valRetur)})</td>
+                </tr>` : ''}
+
+                <tr style="border-top:1px dashed #ccc;">
+                    <td class="label-sub" style="padding-left: 20px; font-style:italic; padding-top:5px;">Total Pengeluaran (B)</td>
+                    <td class="value-sub" style="font-style:italic; padding-top:5px;">(${rp(totalBebanSemua)})</td>
+                </tr>
+
+                <tr class="row-grand-total" style="background-color:#e8f5e9;">
                     <td class="label-grand">LABA BERSIH (NET PROFIT)</td>
                     <td class="value-grand">${valBersih}</td>
                 </tr>
@@ -6719,6 +6802,7 @@ function printLaporanPDFCurrent() {
         `;
 
     } else if (isTabSaldoAktif) {
+        // --- LOGIKA NERACA SALDO ---
         judulLaporan = 'NERACA SALDO (POSISI KEUANGAN)';
         const tglNow = new Date().toISOString().slice(0,10);
         fileName = `Neraca_Saldo_${tglNow}`;
@@ -6739,7 +6823,7 @@ function printLaporanPDFCurrent() {
                  let tipe = tds[2].innerText;
                  let saldo = tds[3].innerText;
                  
-                 // Zebra striping manual untuk PDF (Genap/Ganjil)
+                 // Zebra striping manual untuk PDF
                  let bg = idx % 2 === 0 ? '#fff' : '#f9f9f9';
 
                  cleanRows += `
@@ -6776,6 +6860,7 @@ function printLaporanPDFCurrent() {
         `;
 
     } else {
+        // --- LOGIKA LAPORAN PENGELUARAN BIASA ---
         judulLaporan = 'LAPORAN PENGELUARAN';
         fileName = `Pengeluaran_${tglStart}_${tglEnd}`;
         
@@ -6784,7 +6869,7 @@ function printLaporanPDFCurrent() {
         // Clone Tabel
         let tabelAsli = document.getElementById('tabel-det-pengeluaran').cloneNode(true);
         tabelAsli.className = 'table-bordered'; 
-        tabelAsli.removeAttribute('style'); // Hapus style bawaan jika ada
+        tabelAsli.removeAttribute('style'); 
         
         // Hapus kolom aksi
         const ths = tabelAsli.querySelectorAll('th');
@@ -6793,7 +6878,7 @@ function printLaporanPDFCurrent() {
         trs.forEach(r => {
              const cells = r.querySelectorAll('td');
              if(cells.length > 0) cells[cells.length - 1].remove();
-             // Paksa text hitam di dalam tabel
+             // Paksa text hitam
              r.style.color = '#000';
         });
 
@@ -6807,7 +6892,7 @@ function printLaporanPDFCurrent() {
         `;
     }
 
-    // 4. CSS STYLE - PROFESSIONAL & CLEAN (No Colors for Data)
+    // 4. CSS STYLE - PROFESSIONAL & CLEAN
     const cssStyle = `
         <style>
             @page { margin: 15mm; size: A4; }
