@@ -355,8 +355,8 @@ function showPage(pageId) {
     }
 
     if (pageId === 'pembelian') {
-    loadAkunUntukPembelian(); // [BARU] Load Akun
-    loadDataProdukGlobal();   // [BARU] Load Produk utk Search
+        loadDataAkun();           // <--- GANTI JADI INI (agar globalListAkun terisi)
+        loadDataProdukGlobal();   
     }
 }
 
@@ -460,6 +460,8 @@ function loadSemuaDataAwal() {
     loadCompanyProfile(); 
     loadMetodeBayarKasir();
     loadNotifikasiLonceng();
+
+    loadDataAkun();
 }
 
 // Tambahkan di fungsi switchSettingTab yang sudah ada
@@ -1792,6 +1794,7 @@ function simpanProduk() {
 
                 // Tampilkan Pesan Sukses
                 myAlert('Sukses', 'Produk berhasil disimpan ke database!', 'success');
+                loadProduk();
             })
             .withFailureHandler((err) => {
                 loading(false);
@@ -2174,11 +2177,10 @@ function tambahKeKeranjangBeli() {
     var total = qty * harga;
 
     // Masukkan ke Array Global Keranjang
-    // Pastikan variabel global 'keranjangBeli' sudah ada di paling atas script
     keranjangBeli.push({
         produk: prod,
         qty: qty,
-        harga: harga,
+        hargaSatuan: harga, // <--- GANTI JADI INI
         total: total,
         isTukar: isTukar
     });
@@ -2236,42 +2238,292 @@ function renderKeranjangBeli() {
   }
 
 function prosesBeliFinal() {
-  // 1. Ambil data keranjang (sesuaikan dengan variabel global keranjang Anda)
-  // Asumsi variabel global Anda bernama: keranjangBeli
+  // 1. Cek Keranjang
   if (!keranjangBeli || keranjangBeli.length === 0) {
     return Swal.fire('Kosong', 'Belum ada barang di daftar belanja', 'warning');
   }
 
-  // 2. Ambil Input Baru
+  // 2. Validasi Form Utama (Hanya No Faktur & Supplier)
   const noFaktur = document.getElementById('beli-noFaktur').value;
-  const akunBayar = document.getElementById('beli-akunBayar').value;
+  const supplier = document.getElementById('beli-supplier').value;
 
+  if (!supplier) {
+    return Swal.fire('Wajib', 'Mohon pilih Supplier dulu', 'warning');
+  }
   if (!noFaktur) {
     return Swal.fire('Wajib', 'Mohon isi Nomor Faktur Supplier', 'warning');
   }
-  if (!akunBayar) {
-    return Swal.fire('Wajib', 'Pilih Akun Pembayaran', 'warning');
+
+  // 3. Hitung Total Otomatis
+  let grandTotal = 0;
+  keranjangBeli.forEach(item => grandTotal += item.total);
+
+  // 4. Siapkan Modal Konfirmasi
+  document.getElementById('modal-beli-total-show').innerText = rupiah(grandTotal);
+  document.getElementById('modal-beli-total-raw').value = grandTotal;
+  
+  // Isi Dropdown Akun di Modal (Ambil dari globalListAkun yg sudah ada)
+  const selAkun = document.getElementById('modal-beli-akun');
+  selAkun.innerHTML = '<option value="">-- Pilih Akun --</option>';
+  
+  if (globalListAkun && globalListAkun.length > 0) {
+      globalListAkun.forEach(akun => {
+          let saldoFmt = Number(akun.saldo).toLocaleString('id-ID');
+          selAkun.innerHTML += `<option value="${akun.nama}">${akun.nama} (Saldo: Rp ${saldoFmt})</option>`;
+      });
+      // Tambah Opsi Hutang
+      selAkun.innerHTML += '<option value="Hutang" class="text-danger fw-bold">Hutang (Tempo)</option>';
   }
 
-  // 3. Siapkan Object Data
-  const dataKirim = {
-    supplier: document.getElementById('beli-supplier').value, // Atau ambil dari variabel global
+  // 5. Tampilkan Modal
+  new bootstrap.Modal(document.getElementById('modalBayarBeli')).show();
+}
+
+function konfirmasiSimpanBeli() {
+  // 1. Ambil Data dari Modal & Form
+  const akunBayar = document.getElementById('modal-beli-akun').value;
+  const grandTotal = parseInt(document.getElementById('modal-beli-total-raw').value) || 0;
+  const noFaktur = document.getElementById('beli-noFaktur').value;
+  const supplier = document.getElementById('beli-supplier').value;
+
+  // 2. Validasi Akun
+  if (!akunBayar) {
+    return Swal.fire('Pilih Akun', 'Harap pilih sumber dana untuk pembayaran ini.', 'warning');
+  }
+
+  // 3. Siapkan Payload Data (Disimpan ke variabel biar bisa dipake cetak nanti)
+  const dataTransaksi = {
+    supplier: supplier,
     noFaktur: noFaktur,
     akunBayar: akunBayar,
-    grandTotal: parseInt(document.getElementById('label-grand-total-beli').innerText.replace(/\D/g,'')) || 0,
-    items: keranjangBeli
+    grandTotal: grandTotal,
+    tanggal: new Date().toLocaleDateString('id-ID'), // Tambahkan tanggal untuk cetak
+    items: keranjangBeli // Ambil dari keranjang global
   };
 
-  // 4. Kirim ke Server
-  loading(true); // Jika punya fungsi loading
+  // 4. Tutup Modal Pembayaran
+  const modalEl = document.getElementById('modalBayarBeli');
+  const modalInstance = bootstrap.Modal.getInstance(modalEl);
+  if(modalInstance) modalInstance.hide();
+
+  loading(true); 
   google.script.run
     .withSuccessHandler(function(res) {
       loading(false);
-      Swal.fire('Sukses', res, 'success');
+      
+      // Reset Semua Form
       resetKeranjangBeli();
-      document.getElementById('beli-noFaktur').value = ''; // Reset input
+      document.getElementById('beli-noFaktur').value = ''; 
+      document.getElementById('beli-supplier').value = '';
+      
+      // Refresh Data Background
+      loadProduk();
+      loadKeuangan();
+      loadDashboard();
+      
+      // [UPDATE] Tampilkan Konfirmasi Cetak
+      Swal.fire({
+          title: 'Berhasil Disimpan!',
+          text: "Apakah Anda ingin mencetak Invoice Pembelian ini?",
+          icon: 'success',
+          showCancelButton: true,
+          confirmButtonColor: '#3085d6',
+          cancelButtonColor: '#d33',
+          confirmButtonText: 'Ya, Cetak',
+          cancelButtonText: 'Tutup'
+      }).then((result) => {
+          if (result.isConfirmed) {
+              // Panggil fungsi cetak baru
+              cetakStrukPembelian(dataTransaksi);
+          }
+      });
+
     })
-    .simpanPembelianBulk(dataKirim);
+    .withFailureHandler(function(err) {
+      loading(false);
+      Swal.fire('Gagal', err.message, 'error');
+    })
+    .simpanPembelianBulk(dataTransaksi);
+}
+
+function cetakStrukPembelian(data) {
+    // 1. Ambil Profil Perusahaan
+    const namaPT = globalCompanyProfile.nama_perusahaan || 'NAMA PERUSAHAAN';
+    const alamatPT = globalCompanyProfile.alamat || '-';
+    const noPT = globalCompanyProfile.no_perusahaan || '-';
+    const logoUrl = globalCompanyProfile.logo_perusahaan || '';
+
+    // Logika Logo
+    let htmlLogo = '';
+    if (logoUrl) {
+        htmlLogo = `<img src="${logoUrl}" style="height: 60px; width: auto; margin-right: 15px; filter: grayscale(100%);">`;
+    }
+
+    // 2. Generate Baris Tabel
+    let rowsHTML = '';
+    data.items.forEach((item, index) => {
+        rowsHTML += `
+            <tr>
+                <td style="text-align:center;">${index + 1}</td>
+                <td>${item.produk}<br><small style="color:#555; font-style:italic;">${item.isTukar ? '(Tukar Tabung)' : '(Tabung Baru)'}</small></td>
+                <td style="text-align:center;">${item.qty}</td>
+                <td style="text-align:right;">${rupiah(item.harga)}</td>
+                <td style="text-align:right; font-weight:bold;">${rupiah(item.total)}</td>
+            </tr>
+        `;
+    });
+
+    // 3. Buat Jendela Print
+    const win = window.open('', '', 'height=700,width=900');
+    
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <title>Invoice Pembelian - ${data.noFaktur}</title>
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+            
+            /* CSS AGAR FLEKSIBEL (A4 / A5) */
+            @page {
+                margin: 10mm; 
+                size: auto; /* Biarkan browser mengatur ukuran kertas */
+            }
+
+            body {
+                font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+                margin: 0; padding: 0;
+                color: #000;
+                font-size: 10pt; /* Ukuran font standar agar muat A5 */
+            }
+
+            .container {
+                width: 100%;
+                max-width: 210mm; /* Maksimal lebar A4 */
+                margin: 0 auto;
+            }
+
+            /* HEADER */
+            .header {
+                display: flex; align-items: center; 
+                border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;
+            }
+            .header-info h2 { margin: 0; font-size: 16pt; text-transform: uppercase; }
+            .header-info p { margin: 2px 0 0; font-size: 9pt; color: #444; }
+
+            /* JUDUL & INFO */
+            .title-area {
+                display: flex; justify-content: space-between; align-items: flex-start;
+                margin-bottom: 20px;
+            }
+            .doc-label {
+                font-size: 14pt; font-weight: bold; text-decoration: underline;
+                text-transform: uppercase; margin-bottom: 5px;
+            }
+            .info-table td { padding: 2px 5px; font-size: 10pt; }
+            
+            /* TABEL BARANG */
+            .main-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            .main-table th { 
+                border: 1px solid #000; background: #eee; padding: 8px; 
+                text-transform: uppercase; font-size: 9pt; 
+            }
+            .main-table td { 
+                border: 1px solid #000; padding: 6px 8px; vertical-align: top;
+            }
+            
+            /* FOOTER */
+            .footer-row {
+                display: flex; justify-content: space-between; margin-top: 30px;
+                page-break-inside: avoid; /* Jangan potong tanda tangan */
+            }
+            .ttd-box { width: 30%; text-align: center; }
+            .ttd-line { border-bottom: 1px solid #000; margin-top: 60px; }
+
+            /* TOTAL BOX */
+            .total-box {
+                text-align: right; margin-bottom: 10px;
+            }
+            .grand-total {
+                font-size: 14pt; font-weight: bold; border-top: 2px solid #000; 
+                border-bottom: 2px solid #000; display: inline-block; padding: 5px 20px;
+            }
+
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            
+            <div class="header">
+                ${htmlLogo}
+                <div class="header-info">
+                    <h2>${namaPT}</h2>
+                    <p>${alamatPT}</p>
+                    <p>Telp: ${noPT}</p>
+                </div>
+            </div>
+
+            <div class="title-area">
+                <div>
+                    <div class="doc-label">BUKTI PEMBELIAN</div>
+                    <div>Sumber Dana: <b>${data.akunBayar}</b></div>
+                </div>
+                <table class="info-table">
+                    <tr><td>No. Faktur</td><td>: <b>${data.noFaktur}</b></td></tr>
+                    <tr><td>Tanggal</td><td>: ${data.tanggal}</td></tr>
+                    <tr><td>Supplier</td><td>: <b>${data.supplier}</b></td></tr>
+                </table>
+            </div>
+
+            <table class="main-table">
+                <thead>
+                    <tr>
+                        <th style="width:5%">No</th>
+                        <th>Nama Barang</th>
+                        <th style="width:10%">Qty</th>
+                        <th style="width:20%; text-align:right;">Harga Satuan</th>
+                        <th style="width:20%; text-align:right;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rowsHTML}
+                </tbody>
+            </table>
+
+            <div class="total-box">
+                <div class="grand-total">TOTAL: ${rupiah(data.grandTotal)}</div>
+            </div>
+
+            <div class="footer-row">
+                <div class="ttd-box">
+                    <small>Disiapkan Oleh (Admin),</small>
+                    <div class="ttd-line"></div>
+                </div>
+                <div class="ttd-box">
+                    <small>Supplier / Pengirim,</small>
+                    <div class="ttd-line"></div>
+                    <small>${data.supplier}</small>
+                </div>
+                <div class="ttd-box">
+                    <small>Mengetahui (Pimpinan),</small>
+                    <div class="ttd-line"></div>
+                </div>
+            </div>
+            
+            <div style="font-size:8pt; color:#777; margin-top:20px; text-align:center;">
+                Dicetak otomatis oleh SiGAS PRO pada ${new Date().toLocaleString('id-ID')}
+            </div>
+
+        </div>
+        <script>
+            setTimeout(() => { window.print(); }, 1000);
+        ` + '</sc' + 'ript>' + `
+    </body>
+    </html>
+    `;
+
+    win.document.write(htmlContent);
+    win.document.close();
 }
 
 // --- INIT PAGE RETUR (Panggil saat menu diklik) ---
@@ -2452,30 +2704,45 @@ function filterProdukBeli() {
     const keyword = input.value.toLowerCase();
     const container = document.getElementById('hasil-cari-produk-beli');
     
+    // [PERBAIKAN PENTING] 
+    // Jika cacheProdukList kosong, kita isi paksa dari globalProdukList (data utama)
+    if (cacheProdukList.length === 0) {
+        if (typeof globalProdukList !== 'undefined' && globalProdukList.length > 0) {
+            console.log("Mengisi cache pencarian dari data global...");
+            cacheProdukList = globalProdukList.map(row => {
+                return {
+                    nama: row[1],      // Nama ada di kolom index 1
+                    hargaBeli: row[3], // Harga Beli di index 3
+                    stok: row[4]       // Stok di index 4
+                };
+            });
+        }
+    }
+
     if(keyword.length < 1) {
         container.classList.add('d-none');
         return;
     }
 
-    // Filter dari cacheProdukList
+    // Lakukan Filter
     const filtered = cacheProdukList.filter(item => item.nama.toLowerCase().includes(keyword));
 
     let html = '';
     if(filtered.length === 0) {
+        // Tampilkan pesan jika benar-benar tidak ada yang cocok
         html = '<div class="list-group-item text-muted small">Produk tidak ditemukan</div>';
     } else {
         filtered.forEach(item => {
-            // Saat diklik, panggil fungsi pilihProduk
-            // Kita kirim nama dan harga belinya
+            // Menggunakan <button> agar aman dari error navigasi
             html += `
-            <a href="javascript:void(0)" class="list-group-item list-group-item-action py-2" 
+            <button type="button" class="list-group-item list-group-item-action py-2 text-start" 
               onclick="pilihProdukBeli('${item.nama}', ${item.hargaBeli})">
                 <div class="fw-bold text-dark">${item.nama}</div>
                 <div class="d-flex justify-content-between small text-muted">
-                    <span>HPP: Rp ${Number(item.hargaBeli).toLocaleString()}</span>
+                    <span>HPP: Rp ${Number(item.hargaBeli).toLocaleString('id-ID')}</span>
                     <span>Stok: ${item.stok}</span>
                 </div>
-            </a>
+            </button>
             `;
         });
     }
@@ -3063,23 +3330,41 @@ function bukaFormRetur(trx, tipe) {
     const container = document.getElementById('container-retur-items');
     container.innerHTML = '';
 
+    // Di dalam function bukaFormRetur(trx) ...
+    
     trx.items.forEach((item, idx) => {
         let hargaSatuan = item.hargaTotal / item.qty;
+        let qtySudahRetur = parseInt(item.qtyRetur) || 0; 
+        let sisaKuota = item.qty - qtySudahRetur;
         
+        let disabledState = (sisaKuota <= 0) ? 'disabled' : '';
+        let placeholderTxt = (sisaKuota <= 0) ? 'Habis' : '0';
+
         container.innerHTML += `
            <div class="d-flex justify-content-between align-items-center border-bottom pb-2 mb-2 item-retur-row">
-              <div style="flex:1">
-                 <small class="fw-bold">${item.produk}</small><br>
-                 <small class="text-muted">Dibeli: ${item.qty} | ${item.tipe || ''}</small>
+             <div style="flex:1">
+                 <small class="fw-bold text-dark">${item.produk}</small><br>
+                 <div class="d-flex gap-2 small mt-1">
+                    <span class="text-muted">Beli: <b>${item.qty}</b></span>
+                    <span class="text-danger">Sudah Retur: <b>${qtySudahRetur}</b></span>
+                 </div>
+                 
                  <input type="hidden" class="data-produk" value="${item.produk}">
                  <input type="hidden" class="data-tipe" value="${item.tipe || ''}">
                  <input type="hidden" class="data-harga" value="${hargaSatuan}">
+                 
                  <input type="hidden" class="data-qty-asal" value="${item.qty}">
-              </div>
-              <div style="width: 100px;">
-                 <input type="number" class="form-control form-control-sm input-qty-retur" 
-                        placeholder="0" min="0" max="${item.qty}">
-              </div>
+                 
+                 <input type="hidden" class="data-sisa-kuota" value="${sisaKuota}">
+             </div>
+             
+             <div style="width: 100px;">
+                 <input type="number" class="form-control form-control-sm input-qty-retur"
+                         placeholder="${placeholderTxt}" min="0" max="${sisaKuota}" ${disabledState}
+                         onkeyup="cekMaxRetur(this, ${sisaKuota}, '${item.produk}', ${item.qty}, ${qtySudahRetur})"
+                         onchange="cekMaxRetur(this, ${sisaKuota}, '${item.produk}', ${item.qty}, ${qtySudahRetur})">
+                 <small class="text-success" style="font-size:10px">Sisa: ${sisaKuota}</small>
+             </div>
            </div>
         `;
     });
@@ -3112,72 +3397,78 @@ function prosesSimpanRetur() {
     const jenis = document.getElementById('retur-jenis-trx').value;
     const alasan = document.getElementById('retur-alasan').value;
     
-    let itemsToReturn = [];
-    let hasInput = false;
-    let totalRefundEstimasi = 0; // [BARU]
+    if(!alasan) {
+        return Swal.fire('Gagal', 'Mohon isi alasan retur', 'warning');
+    }
 
-    const rows = document.querySelectorAll('.item-retur-row');
+    let itemsRetur = [];
+    let rows = document.querySelectorAll('.item-retur-row');
+    let adaError = false; // Penanda error
+
     rows.forEach(row => {
-        const prod = row.querySelector('.data-produk').value;
-        const tipe = row.querySelector('.data-tipe').value;
-        const harga = Number(row.querySelector('.data-harga').value);
-        const qtyInput = row.querySelector('.input-qty-retur').value;
-        const qtyRetur = Number(qtyInput);
-
-        if(qtyRetur > 0) {
-            hasInput = true;
-            totalRefundEstimasi += (qtyRetur * harga); // Hitung total
-        }
+        let qtyInput = row.querySelector('.input-qty-retur').value;
+        let qty = parseInt(qtyInput) || 0;
         
-        itemsToReturn.push({
-            produk: prod,
-            tipe: tipe,
-            hargaSatuan: harga,
-            qtyRetur: qtyRetur
-        });
+        // Ambil data dari hidden input
+        let sisaKuota = parseInt(row.querySelector('.data-sisa-kuota').value);
+        let namaProd = row.querySelector('.data-produk').value;
+
+        // >>> TAMBAHKAN BARIS INI (Agar variabel qtyAsal dikenali) <<<
+        let qtyAsal = parseInt(row.querySelector('.data-qty-asal').value); 
+
+        // Validasi Sisa Kuota
+        if (qty > sisaKuota) {
+            adaError = true;
+            Swal.fire('Error', `Retur ${namaProd} melebihi sisa yang diperbolehkan (${sisaKuota})`, 'error');
+            return;
+        }
+
+        if(qty > 0) {
+            itemsRetur.push({
+                produk: namaProd,
+                tipe: row.querySelector('.data-tipe').value,
+                hargaSatuan: parseInt(row.querySelector('.data-harga').value),
+                qtyRetur: qty,
+                qtyAsal: qtyAsal // <--- Variabel ini sekarang sudah aman
+            });
+        }
     });
 
-    if(!hasInput) return myAlert('Error', 'Masukkan jumlah barang yang ingin diretur!', 'error');
+    // Jika ada error, stop proses
+    if (adaError) return;
 
+    if(itemsRetur.length === 0) {
+        return Swal.fire('Kosong', 'Belum ada jumlah barang yang diretur', 'warning');
+    }
+
+    // Lanjut Simpan...
     const payload = {
         idTrx: idTrx,
         jenis: jenis,
         alasan: alasan,
-        items: itemsToReturn
+        items: itemsRetur
     };
-    
-    myConfirm('Konfirmasi Retur', 'Stok akan disesuaikan. Lanjutkan?', () => {
-        loading(true);
-        google.script.run.withSuccessHandler(res => {
-            loading(false);
-            
-            const modalEl = document.getElementById('modalFormRetur');
-            const modalInstance = bootstrap.Modal.getInstance(modalEl);
-            if(modalInstance) modalInstance.hide();
-            
-            myAlert('Sukses', res, 'success');
-            
-            // --- [BARU] POPUP CETAK INVOICE RETUR ---
-            if(jenis === 'JUAL') {
-                // Tampilkan invoice retur
-                cetakInvoiceRetur(payload, totalRefundEstimasi);
-            }
-            // ----------------------------------------
-            
-            if(jenis === 'JUAL') {
-                loadRiwayatJual();
-            } else {
-                loadRiwayatBeli();
-            }
 
-            setTimeout(() => {
-                loadDashboard();
-                loadProduk();
-                loadKeuangan();
-            }, 500);
+    // Tutup Modal
+    const modalEl = document.getElementById('modalFormRetur');
+    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+    if(modalInstance) modalInstance.hide();
+
+    loading(true);
+    google.script.run
+        .withSuccessHandler((res) => {
+            loading(false);
+            Swal.fire('Sukses', 'Data retur berhasil diproses', 'success');
             
-        }).prosesReturBaru(payload);
-    });
+            // Refresh Data Sesuai Halaman
+            if (jenis === 'JUAL') loadRiwayatJual();
+            else loadRiwayatBeli();
+        })
+        .withFailureHandler((err) => {
+            loading(false);
+            Swal.fire('Error', err.message, 'error');
+        })
+        .prosesReturBaru(payload);
 }
 
 // [UPDATE] Load Data Supplier ke Variabel Global
@@ -8215,6 +8506,38 @@ function cekAksesOpname() {
     });
 }
 
+// Fungsi untuk membatasi input retur secara realtime
+// Fungsi validasi realtime dengan info detail
+function cekMaxRetur(input, sisaBolehRetur, namaProduk, totalBeli, sudahRetur) {
+    let nilaiInput = parseInt(input.value) || 0;
+    
+    // Jika input melebihi SISA (Bukan melebihi total beli)
+    if (nilaiInput > sisaBolehRetur) {
+        // 1. Alert Detail
+        Swal.fire({
+            icon: 'warning',
+            title: 'Melebihi Batas Retur!',
+            html: `
+                Produk: <b>${namaProduk}</b><br>
+                Total Beli: ${totalBeli}<br>
+                Sudah Pernah Retur: ${sudahRetur}<br>
+                <hr>
+                <b>Sisa Boleh Retur: ${sisaBolehRetur}</b>
+            `,
+            timer: 3500,
+            showConfirmButton: true
+        });
+        
+        // 2. Reset nilai ke sisa maksimal
+        input.value = sisaBolehRetur;
+        
+        // 3. Efek Merah
+        input.classList.add('is-invalid');
+        setTimeout(() => input.classList.remove('is-invalid'), 1000);
+    }
+    
+    if (nilaiInput < 0) input.value = 0;
+}
 // --- FUNGSI FORMAT RUPIAH SAAT MENGETIK ---
 function formatRupiahInput(input) {
   // 1. Hapus semua karakter selain angka
