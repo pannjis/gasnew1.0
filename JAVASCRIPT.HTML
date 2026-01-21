@@ -1669,7 +1669,6 @@ function renderKeranjangPOS() {
 }
 
 
-
 // --- FUNGSI BARU: LOGIKA TAMBAH/KURANG QTY ---
 function ubahQty(index, delta) {
     const item = keranjangBelanja[index];
@@ -2051,20 +2050,18 @@ function renderNotifikasi(data) {
   
   // 2. JIKA DATA KOSONG / FRESH
   if (!data || data.length === 0) {
-    badge.style.display = 'none'; // Sembunyikan badge merah
+    badge.classList.add('d-none'); // [PERBAIKAN] Gunakan classList.add
     container.innerHTML = '<li><a class="dropdown-item text-muted text-center small" href="#" onclick="return false;">Tidak ada notifikasi baru</a></li>';
-    return; // PENTING: Stop fungsi di sini agar kode di bawah tidak dijalankan
+    return; 
   }
   
-  // 3. JIKA ADA DATA (Kode di bawah ini hanya jalan jika data > 0)
-  
+  // 3. JIKA ADA DATA
   // Tampilkan Angka di Badge
   badge.innerText = data.length > 9 ? '9+' : data.length;
-  badge.style.display = 'inline-block'; // Munculkan badge
+  badge.classList.remove('d-none'); // [PERBAIKAN] Hapus class d-none agar badge muncul
   
   // Loop data untuk ditampilkan ke list
   data.forEach(item => {
-      
       // Tentukan Ikon & Warna (Sesuai Material Icons)
       let iconCode = 'info'; 
       let warnaBg = 'bg-light';
@@ -2102,7 +2099,6 @@ function renderNotifikasi(data) {
       container.insertAdjacentHTML('beforeend', html);
   });
 }
-
 // [UPDATE] Fungsi Update Harga Beli dengan Format Ribuan
 function updateHargaBeli() {
   const sel = document.getElementById('beli-produk');
@@ -2820,11 +2816,30 @@ function prosesSimpanRetur() {
         loading(true);
         google.script.run.withSuccessHandler(res => {
             loading(false);
-            bootstrap.Modal.getInstance(document.getElementById('modalFormRetur')).hide();
+            
+            // Tutup Modal
+            const modalEl = document.getElementById('modalFormRetur');
+            const modalInstance = bootstrap.Modal.getInstance(modalEl);
+            if(modalInstance) modalInstance.hide();
+            
             myAlert('Sukses', res, 'success');
-            // Refresh tabel yang sesuai
-            if(jenis === 'JUAL') loadRiwayatJual();
-            else loadRiwayatBeli();
+            
+            // 1. Refresh Tabel Riwayat (Sesuai Tab yang aktif)
+            if(jenis === 'JUAL') {
+                loadRiwayatJual();
+            } else {
+                loadRiwayatBeli();
+            }
+
+            // [TAMBAHAN PENTING AGAR REALTIME]
+            // Panggil fungsi-fungsi ini agar data lain ikut berubah tanpa refresh page
+            
+            setTimeout(() => {
+                loadDashboard();  // Update Angka Laba, Pengeluaran, & Stok Dashboard
+                loadProduk();     // Update Stok di Menu Produk & Kasir
+                loadKeuangan();   // Update Tabel Keuangan (Masuk/Keluar uang refund)
+            }, 500); // Beri jeda sedikit agar database server selesai update
+            
         }).prosesReturBaru(payload);
     });
 }
@@ -7659,6 +7674,50 @@ function editItemDraft(id) {
 function hapusItemDraft(id) {
     delete draftBuffer[id];
     renderTabelDraftOpname();
+}
+
+// --- FITUR KEAMANAN STOK OPNAME ---
+
+function cekAksesOpname() {
+    const PIN_RAHASIA = "123456"; // Sesuaikan PIN Anda
+
+    Swal.fire({
+        title: 'Keamanan Stok',
+        text: 'Masukkan PIN Otorisasi untuk membuka Stok Opname',
+        icon: 'lock',
+        input: 'password',
+        inputAttributes: {
+            autocapitalize: 'off',
+            placeholder: '******',
+            maxlength: 6,
+            style: 'text-align:center; font-size:24px; letter-spacing: 5px; font-weight:bold;'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'BUKA AKSES',
+        cancelButtonText: 'Batal',
+        confirmButtonColor: '#0d6efd',
+        preConfirm: (inputPin) => {
+            if (inputPin !== PIN_RAHASIA) {
+                Swal.showValidationMessage('PIN Salah! Akses Ditolak.')
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // --- TAMBAHAN BARU DISINI ---
+            // Mencatat aktivitas ke server (Spreadsheet)
+            google.script.run.catatLog('AKSES_MENU', 'Berhasil membuka menu Stok Opname via PIN');
+            // ----------------------------
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Akses Diberikan',
+                timer: 1000,
+                showConfirmButton: false
+            }).then(() => {
+                showPage('stok-opname');
+            });
+        }
+    });
 }
 
 // --- FUNGSI FORMAT RUPIAH SAAT MENGETIK ---
