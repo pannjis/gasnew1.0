@@ -769,12 +769,32 @@
 
                   <div id="hasil-cari-supplier" class="list-group position-absolute w-100 shadow d-none" style="z-index: 1050; max-height: 200px; overflow-y: auto;">
                   </div>
-                </div>
+                  </div> <div class="row mb-3">
+                    <div class="col-md-6">
+                      <label class="fw-bold small text-muted">No. Faktur</label>
+                      <input type="text" id="beli-noFaktur" class="form-control bg-light" placeholder="Contoh: INV-001">
+                    </div>
+                    <div class="mb-2">
+                        <label class="fw-bold small text-muted">Bayar Pakai (Sumber Dana)</label>
+                        <select id="beli-akunBayar" class="form-select bg-light border-0 fw-bold text-dark">
+                          <option value="">Memuat Akun...</option>
+                        </select>
+                    </div>
+                  </div>
+                  <div class="card bg-light p-3 border-0 mb-3">
+                  <div class="mb-2 position-relative">
+                    <label class="fw-bold small text-muted">Cari Produk</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="material-icons text-muted fs-6">inventory_2</i>
+                        </span>
+                        <input type="text" id="beli-cari-produk" class="form-control border-start-0" placeholder="Ketik Nama Produk..." autocomplete="off" onkeyup="filterProdukBeli()">
+                        
+                        <input type="hidden" id="beli-produk-selected">
+                    </div>
 
-                <div class="card bg-light p-3 border-0 mb-3">
-                  <div class="mb-2">
-                    <label class="fw-bold small text-muted">Produk</label>
-                    <select id="beli-produk" class="form-select border-0" onchange="setHargaOtomatis()"></select>
+                    <div id="hasil-cari-produk-beli" class="list-group position-absolute w-100 shadow d-none" style="z-index: 1050; max-height: 200px; overflow-y: auto;">
+                    </div>
                   </div>
 
                   <div class="mb-2">
@@ -839,6 +859,86 @@
             </div>
           </div>
         </div>
+
+        <div id="page-retur-pembelian" class="page-section d-none">
+  <div class="d-flex justify-content-between mb-3">
+    <h3 class="page-title">Retur Pembelian</h3>
+  </div>
+
+  <div class="row">
+    <div class="col-md-4">
+      <div class="card p-4 h-100">
+        <h5 class="fw-bold mb-3 border-bottom pb-2">Cari Faktur</h5>
+        
+        <div class="mb-3">
+          <label class="fw-bold small text-muted">Masukkan No. Faktur</label>
+          <div class="input-group">
+            <input type="text" id="retur-cari-input" class="form-control" placeholder="Cari...">
+            <button class="btn btn-primary" onclick="cariFakturRetur()">Cari</button>
+          </div>
+        </div>
+
+        <div id="form-retur-panel" class="d-none">
+           <hr>
+           <h6 class="fw-bold text-primary mb-3">Detail Retur</h6>
+           
+           <input type="hidden" id="retur-id-produk">
+           <input type="hidden" id="retur-faktur-asal">
+
+           <div class="mb-2">
+             <label class="small text-muted">Produk</label>
+             <input type="text" id="retur-nama-produk" class="form-control bg-light" readonly>
+           </div>
+
+           <div class="row mb-2">
+             <div class="col">
+               <label class="small text-muted">Qty Retur</label>
+               <input type="number" id="retur-qty" class="form-control" oninput="hitungRefund()">
+             </div>
+             <div class="col">
+               <label class="small text-muted">Nilai (Rp)</label>
+               <input type="number" id="retur-harga" class="form-control bg-light" readonly>
+             </div>
+           </div>
+
+           <div class="mb-2">
+              <label class="small text-muted">Total Refund</label>
+              <h4 class="fw-bold text-danger" id="retur-total-show">Rp 0</h4>
+           </div>
+
+           <div class="mb-3">
+              <label class="small text-muted">Refund Masuk ke Akun</label>
+              <select id="retur-akun-masuk" class="form-select"></select>
+           </div>
+
+           <button onclick="prosesReturFinal()" class="btn btn-danger w-100 rounded-pill fw-bold">PROSES RETUR</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-8">
+      <div class="card p-4 h-100">
+        <h5 class="fw-bold mb-3">Isi Faktur</h5>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th>Tanggal</th>
+                <th>Faktur</th>
+                <th>Produk</th>
+                <th>Qty Beli</th>
+                <th>Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabel-hasil-retur">
+              <tr><td colspan="5" class="text-center text-muted">Silakan cari faktur terlebih dahulu.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
         <div id="page-keuangan" class="page-section d-none">
           <div class="d-flex justify-content-between mb-3 align-items-center">
