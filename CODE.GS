@@ -836,7 +836,12 @@ function simpanPembelianBulk(data) {
    
   let summaryItem = [];
 
+  // [UPDATE] Mengambil No Faktur dan Akun dari form
+  const noFaktur = data.noFaktur || "-"; 
+  const akunBayar = data.akunBayar || "Kas Tunai"; 
+
   data.items.forEach(item => {
+    // [UPDATE] Menyesuaikan dengan Kolom Baru di Spreadsheet (Kolom H & I)
     sheetBeli.appendRow([
       idBeliMaster, 
       waktu, 
@@ -844,7 +849,9 @@ function simpanPembelianBulk(data) {
       item.produk, 
       item.qty, 
       item.total, 
-      'Tunai'
+      'Tunai',      // Metode Default
+      noFaktur,     // [BARU] Kolom H
+      akunBayar     // [BARU] Kolom I
     ]);
 
     for (let i = 1; i < prodData.length; i++) {
@@ -853,10 +860,8 @@ function simpanPembelianBulk(data) {
         // --- LOGIKA AVERAGE PRICE ---
         let curIsi = Number(prodData[i][4]) || 0;       
         let curHargaBeli = Number(prodData[i][3]) || 0; 
-        
-        // [FIX] Definisikan curKosong sebelum dipakai
         let curKosong = Number(prodData[i][5]) || 0;    
-
+        
         let qtyBeli = Number(item.qty);
         let hargaBeliBaru = Number(item.hargaSatuan);   
 
@@ -872,7 +877,7 @@ function simpanPembelianBulk(data) {
         }
 
         sheetProd.getRange(i + 1, 4).setValue(averagePrice); 
-        sheetProd.getRange(i + 1, 5).setValue(totalStok);   
+        sheetProd.getRange(i + 1, 5).setValue(totalStok);
         
         if(item.isTukar) {
            sheetProd.getRange(i + 1, 6).setValue(curKosong - Number(item.qty));
@@ -883,16 +888,102 @@ function simpanPembelianBulk(data) {
     summaryItem.push(`${item.produk} (x${item.qty})`);
   });
 
+  // [UPDATE] Catat Pengeluaran dengan Akun yang dipilih
   sheetKeu.appendRow([
     'OUT-' + Date.now(), 
     waktu, 
     'Pengeluaran', 
     'Pembelian Stok', 
     data.grandTotal, 
-    `Beli Stok: ${summaryItem.join(', ')}`
+    `Beli Stok (${noFaktur}): ${summaryItem.join(', ')}`,
+    akunBayar // [BARU] Menggunakan akun pilihan user
+  ]);
+  
+  return "Stok Berhasil Ditambahkan (Faktur: " + noFaktur + ")";
+}
+
+// ==========================================
+// FITUR BARU: RETUR PEMBELIAN
+// ==========================================
+
+function cariFakturPembelianServer(keyword) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('PEMBELIAN');
+  const data = sheet.getDataRange().getValues(); // [ID, Waktu, Supplier, Produk, Qty, Total, Metode, NoFaktur, Akun]
+  
+  let hasil = [];
+  
+  // Mulai loop dari baris 1 (karena baris 0 adalah Header)
+  for (let i = 1; i < data.length; i++) {
+    let noFakturDB = String(data[i][7]).toLowerCase(); // Kolom H (Index 7)
+    let produk = data[i][3];
+    let supplier = data[i][2];
+    
+    // Cari berdasarkan No Faktur
+    if (noFakturDB.includes(keyword.toLowerCase())) {
+      hasil.push({
+        idBeli: data[i][0],
+        tanggal: Utilities.formatDate(new Date(data[i][1]), Session.getScriptTimeZone(), "dd/MM/yyyy"),
+        supplier: supplier,
+        produk: produk,
+        qtyAwal: data[i][4],
+        hargaTotal: data[i][5],
+        noFaktur: data[i][7],
+        rowIndex: i + 1 // Simpan posisi baris
+      });
+    }
+  }
+  return hasil;
+}
+
+function prosesReturPembelianFinal(form) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetRetur = ss.getSheetByName('RETUR_PEMBELIAN');
+  const sheetProd = ss.getSheetByName('PRODUK');
+  const sheetKeu = ss.getSheetByName('KEUANGAN');
+  
+  const tgl = new Date();
+  const idRetur = 'RETBELI-' + Date.now();
+  const prodData = sheetProd.getDataRange().getValues();
+
+  // 1. Simpan ke Database Retur Pembelian
+  sheetRetur.appendRow([
+    idRetur,
+    tgl,
+    form.noFaktur,
+    form.produk,
+    form.qtyRetur,
+    form.totalRefund,
+    form.akunMasuk,
+    form.alasan
   ]);
 
-  return "Stok Berhasil Ditambahkan & Harga Rata-rata Diupdate!";
+  // 2. Kurangi Stok Produk (Karena barang dikembalikan ke Supplier)
+  for(let i=1; i<prodData.length; i++) {
+    if(prodData[i][1] == form.produk) {
+      let curIsi = Number(prodData[i][4]);
+      let stokBaru = curIsi - Number(form.qtyRetur);
+      if(stokBaru < 0) stokBaru = 0; // Prevent minus
+      sheetProd.getRange(i+1, 5).setValue(stokBaru);
+      break;
+    }
+  }
+
+  // 3. Masukkan Uang Refund ke Keuangan (Pemasukan)
+  sheetKeu.appendRow([
+    'INC-' + Date.now(),
+    tgl,
+    'Pemasukan',
+    'Retur Pembelian',
+    form.totalRefund,
+    `Refund Retur ${form.produk} (Faktur: ${form.noFaktur})`,
+    form.akunMasuk
+  ]);
+
+  return {
+    status: 'success',
+    idRetur: idRetur,
+    tgl: Utilities.formatDate(tgl, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm")
+  };
 }
 
 function tambahSupplier(form) {
@@ -922,6 +1013,8 @@ function simpanPembelian(data) {
   
   ss.getSheetByName('KEUANGAN').appendRow(['OUT-' + Date.now(), new Date(), 'Pengeluaran', 'Pembelian Stok', data.total, `Beli ${data.produk}`]);
 }
+
+
 
 function getRiwayatPembelian() {
   const data = getData('PEMBELIAN');
